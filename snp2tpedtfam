@@ -29,7 +29,7 @@ def TPEDTFAM(vCHR, vPOS5, vPOS3, vOUTPUT, vPHEN, vFILTER, vEXCLUDE):
     print 'generating normally distributed random phenotypic data with mean 1 and sigma 0.25'
     vPHEN = [ max(0, normalvariate(1, 0.25)) for x in strains] # cap at 0 just in case to prevent negative numbers
   if not len(vPHEN) == len(strains):
-    exit('ERROR: ' + str(len(vPHEN)) + ' provided yet ' + str(len(strains)) + ' included!')
+    exit('ERROR: ' + str(len(vPHEN)) + 'phenotypic observations provided yet ' + str(len(strains)) + ' accessions included!')
 
   for x in range(len(snps)-1):
     
