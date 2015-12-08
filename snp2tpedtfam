@@ -105,7 +105,6 @@ def main(argv):
       exit()
     if opt == '-n':
       WRITEACC()
-      exopt += 1
       exit('The accession names as they occur in the SNP table have been written to \'accession_names.txt\'')
     elif opt in ("-c"):
       vCHR = arg
