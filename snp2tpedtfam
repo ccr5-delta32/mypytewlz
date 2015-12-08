@@ -8,7 +8,6 @@ from subprocess import call
 from sys import exit, argv
 from getopt import gnu_getopt, GetoptError
 from random import normalvariate
-from math import floor
 
 def TPEDTFAM(vCHR, vPOS5, vPOS3, vOUTPUT, vPHEN, vFILTER, vEXCLUDE):
 
