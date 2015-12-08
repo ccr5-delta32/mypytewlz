@@ -27,7 +27,7 @@ def TPEDTFAM(vCHR, vPOS5, vPOS3, vOUTPUT, vPHEN, vFILTER, vEXCLUDE):
   current = [[] for x in strains]
   positions = []
   if len(vPHEN) == 0: 
-    print 'generating normally distributed random phentypic data with mean 1 and sigma 0.5'
+    print 'generating normally distributed random phenotypic data with mean 1 and sigma 0.5'
     vPHEN = [ max(0, normalvariate(1, 0.25)) for x in strains] # cap at 0 just in case to prevent negative numbers
   if not len(vPHEN) == len(strains):
     exit('ERROR: ' + str(len(vPHEN)) + ' provided yet ' + str(len(strains)) + ' included!')
@@ -62,7 +62,7 @@ def HELP():
   print '-p2\t3\' position <required>'
   print '-f\tconvert ambiguous base calls to \'N\' [omit for default (do not filter)] <optional>'
   print '-o\toutput file name. Do not provide a file extension; three files are produced:\n\t(1) a tped file (.tped), (2) a tfam file with random phenotype is none was provided (.tfam),\n\tand (3) a list of included accessions (.acc) <required>'
-  print '\p\tphenotypical data. A file with a column of accession names and a column of phenotypes.\n\tIf none is provided normally distributed data with mean 0 and sigma 0.25 will be generated. <optional>'
+  print '\p\tphenotypic data. A file with a column of accession names and a column of phenotypes.\n\tIf none is provided normally distributed data with mean 0 and sigma 0.25 will be generated. <optional>'
   print '-x\taccessions to exclude [multiple possible when separated by white space]\n\tThis option must be provided last!!!'
 
 def main(argv):
