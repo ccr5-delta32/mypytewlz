@@ -25,11 +25,17 @@ def TPEDTFAM(vCHR, vPOS5, vPOS3, vOUTPUT, vPHEN, vFILTER, vEXCLUDE):
   strains = [ x.strip('\n') for x in snps_header if x not in ['chromosome', 'position'] + vEXCLUDE ]
   current = [[] for x in strains]
   positions = []
+  
   if len(vPHEN) == 0: 
     print 'generating normally distributed random phenotypic data with mean 1 and sigma 0.25'
-    vPHEN = [ max(0, normalvariate(1, 0.25)) for x in strains] # cap at 0 just in case to prevent negative numbers
+    vPHEN = [ [x, max(0, normalvariate(1, 0.25))] for x in strains] # cap at 0 just in case to prevent negative numbers
+  else:
+    with open(vPHEN, 'r') as PHEN:
+      vPHEN = [[x.strip('\n') for x in y.split('\t')] for y in PHEN]
+      vPHEN.sort(key=lambda z: strains.index(z[0]))
+
   if not len(vPHEN) == len(strains):
-    exit('ERROR: ' + str(len(vPHEN)) + 'phenotypic observations provided yet ' + str(len(strains)) + ' accessions included!')
+    exit('ERROR: ' + str(len(vPHEN)) + ' phenotypic observations provided yet ' + str(len(strains)) + ' accessions included!')
 
   for x in range(len(snps)-1):
     
@@ -44,7 +50,13 @@ def TPEDTFAM(vCHR, vPOS5, vPOS3, vOUTPUT, vPHEN, vFILTER, vEXCLUDE):
   with open(vOUTPUT + '.tfam', 'wb') as output:
     counter = 1
     for x in strains:
-      output.write(str(1) + '\t' + str(counter) + '\t' + '\t'.join(['0', '0', '0']) + '\t' + str(vPHEN[strains.index(x)]) + '\n')
+      output.write(str(1) + '\t' + str(counter) + '\t' + '\t'.join(['0', '0', '0']) + '\t' + str(vPHEN[strains.index(x)][1]) + '\n')
+      counter += 1
+  
+  with open(vOUTPUT + '.acc', 'wb') as output:
+    counter = 1
+    for x in strains:
+      output.write(str(counter) + '\t' + x + '\n')
       counter += 1
 
   with open(vOUTPUT + '.tped', 'wb') as output:
@@ -53,15 +65,23 @@ def TPEDTFAM(vCHR, vPOS5, vPOS3, vOUTPUT, vPHEN, vFILTER, vEXCLUDE):
 
   call([ 'rm', '.snp2tpedtfam_temp' ])
 
+def WRITEACC():
+  with open('/biodata/dep_tsiantis/common/Bjorn/Ch190_database/SNP_tables_Ch190/Chr1_Ch190_SNP_newVar', 'r') as ACC:
+    accessions = [x.strip('\n') for x in ACC.readline().split('\t') if x not in ['chromosome', 'position']]
+  with open('accession_names.txt', 'wb') as ACCOUT:
+    for accname in accessions:
+      ACCOUT.write(accname + '\n')
+
 def HELP():
   print 'example:\n\tsnp2tpedtfam -c Chr1 -5 5000 -3 12500 -f -o fastac1 -p /home/johnny/phenotypes.tbl -x Ox wa jap\n'
   print '-h\tgive this help massage'
+  print '-n\twrite accession names as they occur in the SNP table to a file'
   print '-c\tchromosome [eg. Chr1] <required>'
-  print '-p1\t5\' position <required>'
-  print '-p2\t3\' position <required>'
+  print '-5\t5\' position <required>'
+  print '-3\t3\' position <required>'
   print '-f\tconvert ambiguous base calls to \'N\' [omit for default (do not filter)] <optional>'
-  print '-o\toutput file name. Do not provide a file extension; three files are produced:\n\t(1) a tped file (.tped), (2) a tfam file with random phenotype is none was provided (.tfam),\n\tand (3) a list of included accessions (.acc) <required>'
-  print '\p\tphenotypic data. A file with a column of accession names and a column of phenotypes.\n\tIf none is provided normally distributed data with mean 0 and sigma 0.25 will be generated. <optional>'
+  print '-o\toutput file name. <required>\n\tDo not provide a file extension; three files are produced:\n\t(1) a tped file (.tped)\n\t(2) a tfam file with random phenotype is none was provided (.tfam)\n\t(3) an ordered list of included accessions (.acc)'
+  print '-p\tphenotypic data. <optional>\n\tA TAB separated file with a column of accession names and a column of phenotypes. Ordering\n\tof the accessions is not important but the names must be exactly as in the SNP table (see option -n).\n\tIf none is provided normally distributed data with mean 1 and sigma 0.25 will be generated.'
   print '-x\taccessions to exclude [multiple possible when separated by white space]\n\tThis option must be provided last!!!'
 
 def main(argv):
@@ -74,7 +94,7 @@ def main(argv):
   vPHEN = ''
   exopt = 9
   try:
-    opts, args = gnu_getopt(argv,"hc:5:3:fo:px")
+    opts, args = gnu_getopt(argv,"hnc:5:3:fp:o:x:")
     if not opts: exit(HELP())
   except GetoptError:
     print 'example:\n\tsnp2tpedtfam [-h] -c Chr1 -5 5000 -3 12500 -f -o fastac1 -p /home/johnny/phenotypes.tbl -x Ox wa jap>'
@@ -83,6 +103,10 @@ def main(argv):
     if opt == '-h':
       HELP()
       exit()
+    if opt == '-n':
+      WRITEACC()
+      exopt += 1
+      exit('The accession names as they occur in the SNP table have been written to \'accession_names.txt\'')
     elif opt in ("-c"):
       vCHR = arg
     elif opt in ("-5"):
@@ -91,12 +115,12 @@ def main(argv):
       vPOS3 = arg
     elif opt in ("-f"):
       vFILTER = True
-      exopt = exopt + 1 
+      exopt += 1 
     elif opt in ("-o"):
       vOUTPUT = arg
     elif opt in ("-p"):
       vPHEN = arg
-      exopt = exopt + 2 
+      exopt += 2 
     elif opt in ("-x"):
       vEXCLUDE = [x for x in argv[exopt:]]
   

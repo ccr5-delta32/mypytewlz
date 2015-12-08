@@ -50,12 +50,12 @@ def FASTA(vCHR, vPOS5, vPOS3, vOUTPUT, vFILTER, vEXCLUDE):
 def HELP():
   print 'example:\n\tsnp2fas -c Chr1 -5 5000 -3 12500 -f -o fastac1 -x Ox wa jap\n'
   print '-h\tgive this help massage'
-  print '-c\tchromosome [eg. Chr1]'
-  print '-p1\t5\' position'
-  print '-p2\t3\' position'
-  print '-f\tconvert ambiguous base calls to \'N\' [omit for default (do not filter)]'
-  print '-o\toutput file name. Do not provide a file extension; two files are produced:\n\t(1) a fasta file (.fa) and (2) a list of physical positions (.pos)'
-  print '-x\taccessions to exclude [multiple possible when separated by white space]\n\tThis option must be provided last!!!'
+  print '-c\tchromosome [eg. Chr1] <required>'
+  print '-5\t5\' position <required>'
+  print '-3\t3\' position <required>'
+  print '-f\tconvert ambiguous base calls to \'N\' [omit for default (do not filter)] <optional>'
+  print '-o\toutput file name. <required>\n\tDo not provide a file extension; two files are produced:\n\t(1) a fasta file (.fa)\n\t(2) a list with the physical positions of the SNPs (.pos)'
+  print '-x\taccessions to exclude [multiple possible when separated by white space] <optional>\n\tThis option must be provided last!!!'
 
 def main(argv):
   vCHR = ''
