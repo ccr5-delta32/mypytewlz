@@ -1,0 +1,96 @@
+#!/usr/bin/python
+
+''' Bjorn Pieper, Dec-07 2015, MPIPZ Cologne.
+    FASTA alignment of SNPs for arbitrary regions.
+'''
+
+from subprocess import call
+from sys import exit, argv
+from getopt import gnu_getopt, GetoptError
+
+def FASTA(vCHR, vPOS5, vPOS3, vOUTPUT, vFILTER, vEXCLUDE):
+
+  path = '/biodata/dep_tsiantis/common/Bjorn/Ch190_database/SNP_tables_Ch190/'
+  composite1 = '$2>=' + str(vPOS5) + ' && $2<=' + str(vPOS3)
+  with open('.snp2fas_temp', 'w') as outfile:
+    call(['awk', composite1, path + vCHR + '_Ch190_SNP_newVar'], stdout=outfile)
+
+## Load SNP data
+  with open(path + vCHR + '_Ch190_SNP_newVar', 'r') as getheader:
+    snps_header = [ x.strip('\n') for x in getheader.readline().split('\t') ]
+  with open('.snp2fas_temp', 'r') as SNPs:
+    snps = [ [ x.strip('\n') for x in y.split('\t') ] for y in SNPs ]
+
+  strains = [ x.strip('\n') for x in snps_header if x not in ['chromosome', 'position'] + vEXCLUDE ]
+  current = [[] for x in strains]
+  positions = []
+
+  for x in range(len(snps)-1):
+    
+    positions.append(snps[x][1])
+    
+    for y in strains:
+      if vFILTER == True:
+        if snps[x][snps_header.index(y)] not in ['A', 'G', 'C', 'T', 'N']:
+          snps[x][snps_header.index(y)] = 'N'
+      current[strains.index(y)].append(snps[x][snps_header.index(y)])
+
+  with open(vOUTPUT + '.pos', 'wb') as output:
+    for x in positions:
+      output.write(x)
+      output.write('\n')
+
+  with open(vOUTPUT + '.fa', 'wb') as output:
+    for x in strains:
+      output.write('>' + x + '\n')
+      output.write(''.join(current[strains.index(x)]) + '\n')
+
+  call([ 'rm', '.snp2fas_temp' ])
+
+def HELP():
+  print 'example:\n\tsnp2fas -c Chr1 -5 5000 -3 12500 -f -o fastac1 -x Ox wa jap\n'
+  print '-h\tgive this help massage'
+  print '-c\tchromosome [eg. Chr1]'
+  print '-p1\t5\' position'
+  print '-p2\t3\' position'
+  print '-f\tconvert ambiguous base calls to \'N\' [omit for default (do not filter)]'
+  print '-o\toutput file name. Do not provide a file extension; two files are produced:\n\t(1) a fasta file (.fa) and (2) a list of physical positions (.pos)'
+  print '-x\taccessions to exclude [multiple possible when separated by white space]\n\tThis option must be provided last!!!'
+
+def main(argv):
+  vCHR = ''
+  vPOS5 = ''
+  vPOS3 = ''
+  vOUTPUT = ''
+  vEXCLUDE = []
+  vFILTER = False
+  exopt = 9 
+  try:
+    opts, args = gnu_getopt(argv,"hc:5:3:fo:x")
+    if not opts: exit(HELP())
+  except GetoptError:
+    print 'example:\n\tsnp2fas [-h] -c Chr1 -5 5000 -3 12500 -f -o fastac1 -xve Ox wa jap>'
+    exit(2)
+  for opt, arg in opts:
+    if opt == '-h':
+      HELP()
+      exit()
+    elif opt in ("-c"):
+      vCHR = arg
+    elif opt in ("-5"):
+      vPOS5 = arg
+    elif opt in ("-3"):
+      vPOS3 = arg
+    elif opt in ("-f"):
+      vFILTER = True
+      exopt = 11
+    elif opt in ("-o"):
+      vOUTPUT = arg
+    elif opt in ("-x"):
+      vEXCLUDE = [x for x in argv[exopt:]]
+  
+  FASTA(vCHR, vPOS5, vPOS3, vOUTPUT, vFILTER, vEXCLUDE)
+
+if __name__ == "__main__":
+   main(argv[1:])
+
