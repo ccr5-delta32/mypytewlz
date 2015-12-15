@@ -1,0 +1,70 @@
+#!/usr/bin/python
+
+''' Bjorn Pieper. December 15, 2015.
+    This will process the input files for BayeScan from FASTA alignments per
+    population per chromosome.
+'''
+
+import re
+
+pops = ['Az_1', 'Az_2', 'azglb', 'glb']
+with open('/biodata/dep_tsiantis/common/Bjorn/Ch_SNP_database/PopGenome/popinfo_new', 'r') as INFO:
+  popi = [[x.strip('\n') for x in y.strip('\t')] for y in INFO]
+
+for i in range(1,9):
+
+  print 'processing chromosome ' + str(i)
+  
+  with open('../../Ch_SNP_database/positions_new10x_C' + str(i) + '_fasta', 'r') as POS:
+    pos = [x.strip('\n') for x in POS]
+
+  #with open('chr' + str(i) +'_Az_1_BayeScan.txt', 'r') as POP1:
+  #  bpop1 = [[x.strip('\n') for x in y.split('\t')] for y in POP1]
+  #with open('chr' + str(i) +'_Az_2_BayeScan.txt', 'r') as POP2:
+  #  bpop2 = [[x.strip('\n') for x in y.split('\t')] for y in POP2]
+  #with open('chr' + str(i) +'_azglb_BayeScan.txt', 'r') as POP3:
+  #  bpop3 = [[x.strip('\n') for x in y.split('\t')] for y in POP3]
+  #with open('chr' + str(i) +'_glb_BayeScan.txt', 'r') as POP4:
+  #  bpop4 = [[x.strip('\n') for x in y.split('\t')] for y in POP4]
+
+  spops = [[] for x in pops]
+  slpops = [[] for x in pops]
+  for pop in pops:
+    with open('chr' + str(i) +'_' + pop + '.fa', 'r') as POP:
+      spops[pops.index(pop)] = [x.strip('\n') for x in POP if not re.search('>', x)]
+    with open('chr' + str(i) +'_' + pop +'.fa', 'r') as POP:
+      slpops[pops.index(pop)] = [x.strip('>\n') for x in POP if re.search('>', x)]
+
+  result_header = ['index', 'ngenes', 'nalleles', 'nobs'] # tab-join the allele counts and populate nobs
+  result = [[[] for x in range(len(result_header))] for y in range(len(pops))]
+  rpos = []
+  INDEX = 1
+  for j in range(len(spops[pops.index(pop)][0])):
+    total = ''.join([x[j] for x in spops[pops.index(pop)] if x[j] != 'N' for pop in pops])
+    NALLELES = len(set(total))
+    if NALLELES == 1: continue
+    NGENES   = len(total)
+    ALLELES  = set(total)
+    rpos.append(pos[j])
+
+    for pop in pops:
+      poptotal = ''.join([x[j] for x in spops[pops.index(pop)] if x[j] != 'N'])
+      result[pops.index(pop)][0].append(INDEX)
+      result[pops.index(pop)][1].append(len(poptotal))
+      result[pops.index(pop)][2].append(NALLELES)
+      result[pops.index(pop)][3].append('\t'.join([str(poptotal.count(allele)) for allele in ALLELES])) 
+
+    INDEX += 1
+
+  with open('chr_' + str(i) + '_BayeScan_BP.txt', 'wb') as OUTPUT:
+    OUTPUT.write('[loci]=' + str(len(rpos)) + '\n\n')
+    OUTPUT.write('[populations]=' + str(len(pops)) + '\n\n')
+    for j in range(len(pops)):
+      OUTPUT.write('[pop]=' + str(j+1) + '\n')
+      for k in range(len(result[j][1])):
+        OUTPUT.write('\t'.join(str(l[k]) for l in result[j]) + '\n')
+      OUTPUT.write('\n')
+  
+  with open('chr_' + str(i) + '_BayeScan_BP.pos', 'wb') as OUTPOS:
+    for position in rpos:
+      OUTPOS.write(str(position) + '\n')
