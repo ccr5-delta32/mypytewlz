@@ -13,10 +13,12 @@ def TPEDTFAM(vCHR, vPOS5, vPOS3, vOUTPUT, vPHEN, vFILTER, vEXCLUDE):
 
   path = '/biodata/dep_tsiantis/common/Bjorn/Ch190_database/SNP_tables_Ch190/'
   composite1 = '$2>=' + str(vPOS5) + ' && $2<=' + str(vPOS3)
+  print 'writing temporary SNP subset'
   with open('.snp2tpedtfam_temp', 'w') as outfile:
     call(['awk', composite1, path + vCHR + '_Ch190_SNP_newVar'], stdout=outfile)
 
 ## Load SNP data
+  print 'loading SNP data'
   with open(path + vCHR + '_Ch190_SNP_newVar', 'r') as getheader:
     snps_header = [ x.strip('\n') for x in getheader.readline().split('\t') ]
   with open('.snp2tpedtfam_temp', 'r') as SNPs:
@@ -36,37 +38,43 @@ def TPEDTFAM(vCHR, vPOS5, vPOS3, vOUTPUT, vPHEN, vFILTER, vEXCLUDE):
 
   if not len(vPHEN) == len(strains):
     exit('ERROR: ' + str(len(vPHEN)) + ' phenotypic observations provided yet ' + str(len(strains)) + ' accessions included!')
-
+  
+  print 'processing SNP data'
   for x in range(len(snps)-1):
-    
     positions.append(snps[x][1])
-    
     for y in strains:
       if vFILTER == True:
         if snps[x][snps_header.index(y)] not in ['A', 'G', 'C', 'T', 'N']:
           snps[x][snps_header.index(y)] = 'N'
       current[strains.index(y)].append(snps[x][snps_header.index(y)])
-
+  print 'writing tfam file'
   with open(vOUTPUT + '.tfam', 'wb') as output:
     counter = 1
     for x in strains:
-      output.write(str(1) + '\t' + str(counter) + '\t' + '\t'.join(['0', '0', '0']) + '\t' + str(vPHEN[strains.index(x)][1]) + '\n')
+      output.write('\t'.join([str(1), str(counter), '0', '0', '0', str(vPHEN[strains.index(x)][1])]) + '\n')
       counter += 1
-  
+  print 'writing acc file'
   with open(vOUTPUT + '.acc', 'wb') as output:
     counter = 1
     for x in strains:
       output.write(str(counter) + '\t' + x + '\n')
       counter += 1
-
+  print 'writing tped file'
   with open(vOUTPUT + '.tped', 'wb') as output:
     for x in positions:
-      output.write(str(1) + '\t' + vCHR + '_' + str(x) + '\t' + str(x) + '\t' +'\t'.join([y + '\t' + y for y in [z[positions.index(x)] for z in current]]) + '\n')
-
+      output.write('\t'.join( [ str(1), ''.join([vCHR, '_', str(x)]),\
+                                '0', str(x),\ 
+                               '\t'.join([''.join([y, '\t', y]) for y in
+                                                   [z[positions.index(x)]\
+                                                   for z in current]]) ]  ) + '\n')
+  print 'cleaning up'
   call([ 'rm', '.snp2tpedtfam_temp' ])
+  print 'Done'
 
 def WRITEACC():
-  with open('/biodata/dep_tsiantis/common/Bjorn/Ch190_database/SNP_tables_Ch190/Chr1_Ch190_SNP_newVar', 'r') as ACC:
+  with
+  open('/biodata/dep_tsiantis/common/Bjorn/Ch190_database/SNP_tables_Ch190/Chr1_Ch190_SNP_newVar',\
+       'r') as ACC:
     accessions = [x.strip('\n') for x in ACC.readline().split('\t') if x not in ['chromosome', 'position']]
   with open('accession_names.txt', 'wb') as ACCOUT:
     for accname in accessions:
@@ -80,9 +88,17 @@ def HELP():
   print '-5\t5\' position <required>'
   print '-3\t3\' position <required>'
   print '-f\tconvert ambiguous base calls to \'N\' [omit for default (do not filter)] <optional>'
-  print '-o\toutput file name. <required>\n\tDo not provide a file extension; three files are produced:\n\t(1) a tped file (.tped)\n\t(2) a tfam file with random phenotype is none was provided (.tfam)\n\t(3) an ordered list of included accessions (.acc)'
-  print '-p\tphenotypic data. <optional>\n\tA TAB separated file with a column of accession names and a column of phenotypes. Ordering\n\tof the accessions is not important but the names must be exactly as in the SNP table (see option -n).\n\tIf none is provided normally distributed data with mean 1 and sigma 0.25 will be generated.'
-  print '-x\taccessions to exclude [multiple possible when separated by white space]\n\tThis option must be provided last!!!'
+  print '-o\toutput file name. <required>\n\tDo not provide a file extension;\
+        three files are produced:\n\t(1) a tped file (.tped)\n\t(2) a tfam file with\
+        random phenotype if none was provided (.tfam)\n\t(3) an ordered list of\
+        included accessions (.acc)'
+  print '-p\tphenotypic data. <optional>\n\tA TAB separated file with a column\
+        of accession names and a column of phenotypes. Ordering\n\tof the accessions\
+        is not important but the names must be exactly as in the SNP table (see\
+        option -n).\n\tIf none is provided normally distributed data with mean\
+        1 and sigma 0.25 will be generated.'
+  print '-x\taccessions to exclude [multiple possible when separated by white\
+        space]\n\tThis option must be provided last!!!'
 
 def main(argv):
   vCHR = ''
