@@ -76,7 +76,7 @@ def allSeqIndex(seq_pop_indx, pop_indx):
     ## for each population, and the indices of the desired population(s)
     ## to make dadi of. I then return a 1-dimensional list with those 
     ## sequence indices
-    if len(pop_indx) == 1: return seq_pop_indx[pop_indx]
+    if len(pop_indx) == 1: return seq_pop_indx[pop_indx[0]]
     else:
         comb = seq_pop_indx[pop_indx[0]]
         for i in range(1, len(pop_indx)):
