@@ -1,0 +1,62 @@
+#!/usr/bin/python
+
+''' Bjorn Pieper, MPIPZ Cologne, May 2016.
+    Simple tool to make tped and tfam files from our SNP tables '''
+
+from argparse import ArgumentParser, RawTextHelpFormatter
+import sys
+from numpy.random import normal 
+from re import search
+
+p = ArgumentParser(prog='snp2tpedfam', formatter_class=RawTextHelpFormatter,
+                   description='A tool to produce tped and tfam files from'+\
+                   ' a table of haploid SNPs.\nAs it stands family, paternal'+\
+                   ' and maternal IDs are set to 0,\nand sex to unknown.')
+p.add_argument('-s', metavar='SNP table', help='Path to table of SNPs. The '+\
+               'table should contain columns:\nchromosome, position, and'+\
+               ' then the alleles for all genotypes.\nA header is required'+\
+              ' to contain the names of the strains', required=True)
+p.add_argument('-i', metavar='include', help='Path to a list of strains to'+\
+               ' include.', required=True)
+p.add_argument('-p', metavar='phenotypes', help='path to list of phenotypes.'+\
+               ' Should be ordered to match\nthe order in the list provided '+\
+               'to \'-i\'. When omitted\na nomally distributed random'+\
+               ' phenotype is generated with\na mean of 2 and a standard'+\
+               ' deviation of 0.5', required=False)
+p.add_argument('-o', metavar='outfiles', help='Output file name', required=True)
+p._optionals.title='arguments'
+
+if len(sys.argv) == 1:
+    p.print_help()
+    sys.exit(0)
+
+args = p.parse_args()
+
+## open strains
+strains = open(args.i).read().split('\n')[:-1]
+## open or generate phenotypes
+if args.p:
+    pheno = open(args.p).read().split('\n')[:-1]
+else:
+    pheno = normal(2, 0.5, len(strains))
+
+## write tfam
+with open(args.o + '.tfam', 'wb') as OUT:
+    for i in range(len(strains)):
+        OUT.write('\t'.join(['1', str(i), '0', '0', '3', 
+                             str(round(pheno[i],3))])+'\n')\
+
+## write tped
+with open(args.s, 'r') as SNP:
+    snp_header=SNP.readline().strip('\n').split('\t')
+    strain_indx = [snp_header.index(i) for i in strains]
+    with open(args.o + '.tped', 'wb') as OUT:
+        for snp in SNP:
+            tmp = snp.strip('\n').split('\t')
+            sub = [tmp[i] for i in strain_indx]
+            if len(set(sub)) == 1 or\
+               True in [i not in ['A', 'G', 'C', 'T', 'N'] for i in sub]:\
+               continue
+            OUT.write('\t'.join([search('\d', tmp[0]).group(0),
+                                 'snp_'+str(tmp[1])] + [tmp[i]+' '+tmp[i] for i
+                                                        in strain_indx]) + '\n')
