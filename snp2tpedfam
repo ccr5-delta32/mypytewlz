@@ -43,7 +43,7 @@ else:
 ## write tfam
 with open(args.o + '.tfam', 'wb') as OUT:
     for i in range(len(strains)):
-        OUT.write('\t'.join(['1', str(i), '0', '0', '3', 
+        OUT.write('\t'.join(['1', str(i+1), '0', '0', '3', 
                              str(round(pheno[i],3))])+'\n')\
 
 ## write tped
