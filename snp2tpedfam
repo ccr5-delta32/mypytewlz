@@ -20,7 +20,7 @@ p.add_argument('-i', metavar='include', help='Path to a list of strains to'+\
                ' include.', required=True)
 p.add_argument('-p', metavar='phenotypes', help='path to list of phenotypes.'+\
                ' Should be ordered to match\nthe order in the list provided '+\
-               'to \'-i\'. When omitted\na nomally distributed random'+\
+               'to \'-i\'. When omitted\na normally distributed random'+\
                ' phenotype is generated with\na mean of 2 and a standard'+\
                ' deviation of 0.5', required=False)
 p.add_argument('-o', metavar='outfiles', help='Output file name', required=True)
@@ -58,5 +58,6 @@ with open(args.s, 'r') as SNP:
                True in [i not in ['A', 'G', 'C', 'T', 'N'] for i in sub]:\
                continue
             OUT.write('\t'.join([search('\d', tmp[0]).group(0),
-                                 'snp_'+str(tmp[1])] + [tmp[i]+' '+tmp[i] for i
-                                                        in strain_indx]) + '\n')
+                                 'snp_'+str(tmp[1])] + str(tmp[1]) +\
+                                [tmp[i]+' '+tmp[i] for i in strain_indx]) +\
+                      '\n')
