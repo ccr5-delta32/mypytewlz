@@ -58,6 +58,6 @@ with open(args.s, 'r') as SNP:
                True in [i not in ['A', 'G', 'C', 'T', 'N'] for i in sub]:\
                continue
             OUT.write('\t'.join([search('\d', tmp[0]).group(0),
-                                 'snp_'+str(tmp[1]), str(tmp[1])] +\
+                                 'snp_'+str(tmp[1]), '0', str(tmp[1])] +\
                                 [tmp[i]+' '+tmp[i] for i in strain_indx]) +\
                       '\n')
