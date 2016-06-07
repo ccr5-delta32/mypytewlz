@@ -1,0 +1,81 @@
+#!/usr/bin/python
+''' Bjorn Pieper. MPIPZ COlogne, June 2016. Make ms file out of fasta alignment.
+'''
+from re import search 
+from argparse import ArgumentParser
+from sys import argv, exit
+
+val = [False, False]
+if '-pop' in [i for i in argv]:
+    val = [True, True]
+p = ArgumentParser(prog='fa2ms', description='Make an ms file out of a fasta '+\
+                   'alignment. It is intended for simulated data where the '+\
+                   'ancestral allele is known and is always the same. But it '+\
+                   'can also use a single sequence in the fasta aligment as '+\
+                   'outgroup. If a single nucleotide is provided to -anc no '+\
+                   'outgroup is assumed to be present in the aligment.')
+p.add_argument('-fa', metavar='fasta', help='Path to fasta alignment',
+               required=True)
+p.add_argument('-pop', metavar='popfile', help='Path to population info. File'+\
+               ' with in column 1 the sequence identifiers and in column 2 '+\
+               ' the population labels. A header is assumed to be present. '+\
+               'May be omitted is fasta is a single pop', required=val[0])
+p.add_argument('-p', metavar='population', help='Population in -pop to make '+\
+               'ms of. (required when -pop is specified)', required=val[1])
+p.add_argument('-pos', metavar='positions', help='path to list of positions',
+               required=True)
+p.add_argument('-bi', help='When provided only biallic sites with no missing'+\
+               ' data are included' , action='store_true')
+p.add_argument('-anc', metavar='ancestral', help='Ancestral allele or label '+\
+               'of outgroup in fasta aligment', required=True)
+
+if len(argv) == 1:
+    p.print_help()
+    exit(0)
+
+args = p.parse_args()
+
+fasta = open(args.fa).read().split('\n')[:-1]
+lab = [i.strip('>') for i in fasta if search('>', i)] 
+seq = [i for i in fasta if not search('>', i)] 
+del fasta
+if args.pop:
+    pop = [i.split('\t') for i in open(args.pop).read().split('\n')[1:-1]]
+    pop_indx = [lab.index(i) for i in [j[0] for j in pop if j[1] == args.p]]
+    if args.anc not in ['A', 'G', 'C', 'T']:
+        ancestral = lab.index(args.anc)
+elif not args.pop and args.anc not in ['A', 'G', 'C', 'T']:
+    pop_indx = [lab.index(i) for i in lab if not i in [args.anc]]
+    ancestral = lab.index(args.anc)
+pos = open(args.pos).read().split('\n')[:-1]
+nucl = ['A', 'G', 'C', 'T']
+
+ms = [[] for i in range(len(pop_indx)+1)]
+for i in range(len(seq[0])):
+    if len(args.anc) == 1 and args.anc in nucl:
+        anc = args.anc
+        tmp = [j[i] for j in [seq[k] for k in pop_indx]]
+    else:
+        tmp = [seq[j][i] for j in range(len(seq)) if j is not ancestral]
+        anc = seq[ancestral][i]
+    if anc not in nucl: continue
+    nset = list(set(tmp))
+    rng = range(1, len(pop_indx)+1)
+
+    if args.bi and len(nset) == 2 and anc in nset:
+        ms[0].append(int(pos[i]))
+        for j in rng:
+            ms[j].append([1,0][tmp[j-1] == anc])
+    elif not args.bi and len(nset) > 1 and anc in nset:
+        ms[0].append(int(pos[i]))
+        for j in rng:
+            ms[j].append([1,0][tmp[j-1] == anc])
+            
+with open(args.fa.split('/')[-1].split('.')[0] + '.ms', 'wb') as out:
+    out.write('ms 1 2 -t 3' + '\n')
+    out.write('1 2 3' + '\n\n//\n')
+    out.write('segsites: ' + str(len(ms[0])) + '\n')
+    maxpos = ms[0][len(ms[0])-1]
+    out.write('positions: ' + ' '.join([str(float(i)/maxpos) for i in ms[0]]) + '\n')
+    for i in range(1, len(pop_indx)+1):
+        out.write(''.join([str(j) for j in ms[i]]) + '\n')
