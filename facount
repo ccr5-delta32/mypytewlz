@@ -1,5 +1,7 @@
 #!/usr/bin/python
 
+''' Bjorn Pieper. June 2016'''
+
 from sys import exit, argv
 from re import search 
 from argparse import ArgumentParser
