@@ -1,0 +1,58 @@
+#!/usr/bin/python
+
+from sys import exit, argv
+from re import search 
+from argparse import ArgumentParser
+
+p = ArgumentParser(prog='scnt', description='Count number of alleles per '+\
+                   'nucleotide in a fasta alignment')
+p.add_argument('-fa', metavar='fasta', help='Path to fasta '+\
+               'alignment',required=True)
+p.add_argument('-anc', metavar='outgroup', help='ID  of the outgroup in the'+\
+               ' aligment. If specified the number of sites with more than 1'+\
+               ' derived allele in the ingroup are counted separately. Sites'+\
+               ' with ambiguous calls for the outgroup are then globally'+\
+               ' excluded.')
+p.add_argument('-a', metavar='n_ambiguous', help='Specifiy the maximum number '+\
+               'of ambiguous base calls allowed per site. Default is zero.')
+
+if len(argv) == 1:
+    p.print_help()
+    exit(0)
+
+args = p.parse_args()
+
+fasta = open(args.fa).read().split('\n')[:-1]
+lab = [i.strip('>') for i in fasta if search('>', i)]
+seq = [i for i in fasta if not search('>', i)]
+del fasta
+inseq = seq
+
+if args.anc:
+    inseq = [seq[lab.index(i)] for i in lab if i not in [args.anc]]
+    outseq = seq[ [lab.index(i) for i in lab if i in [args.anc]][0] ]
+del seq
+
+crit = [args.a, 0][args.a is None]
+cnt = [0 for i in range([5, 4][args.anc is None])]
+amb = ['N', 'W', 'R', 'Y', 'K', 'S', 'M']
+nucl = ['A', 'G', 'C', 'T']
+
+for i in range(len(inseq[0])):
+    cseq = [j[i] for j in inseq]
+    if sum([j not in nucl for j in cseq]) > crit: continue
+    iset = list(set([j for j in cseq if j in nucl]))
+    
+    if args.anc:
+        if outseq[i] not in nucl: continue
+        out = outseq[i]
+        oset = list(set(iset + [out]))
+        if len(iset) > 1 and out not in iset:
+            cnt[4] += 1
+        iset = oset
+
+    cnt[len(iset)-1] += 1
+
+print 'Number of alleles per site:'
+print ['1, 2, 3, 4, <multiple derived>', '1, 2, 3, 4'][args.anc is None]
+print ' '.join([str(i) for i in cnt])
