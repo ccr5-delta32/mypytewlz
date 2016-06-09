@@ -6,7 +6,7 @@ from sys import exit, argv
 from re import search 
 from argparse import ArgumentParser
 
-p = ArgumentParser(prog='scnt', description='Count number of alleles per '+\
+p = ArgumentParser(prog='facount', description='Count number of alleles per '+\
                    'nucleotide in a fasta alignment')
 p.add_argument('-fa', metavar='fasta', help='Path to fasta '+\
                'alignment',required=True)
@@ -37,7 +37,6 @@ del seq
 
 crit = [args.a, 0][args.a is None]
 cnt = [0 for i in range([5, 4][args.anc is None])]
-amb = ['N', 'W', 'R', 'Y', 'K', 'S', 'M']
 nucl = ['A', 'G', 'C', 'T']
 
 for i in range(len(inseq[0])):
