@@ -1,0 +1,110 @@
+#!/usr/bin/env python2
+
+''' Bjorn Pieper. June 2016 '''
+
+from argparse import ArgumentParser
+from sys import argv, exit
+from re import search
+from subprocess import check_output 
+from itertools import chain
+import gzip
+
+p = ArgumentParser(prog='sdi2snp', description='Produce a SNP table out of an'+\
+                   ' arbitrary bunch of sdi files, which may be in the '+\
+                   'form of gzip archives')
+p.add_argument('-p', metavar='<String>', help='Path containing the sdi files',
+               required=True)
+p.add_argument('-l', metavar='<String>', help='list relating file names to '+\
+               'strain names. Use -fcol and -scol to indicate the respective'+\
+               ' column numbers in the list; defaults to columns 1 and 2.'+\
+               ' The file extensions (.sdi or .sdi.gz) are not required to '+\
+               ' be included in the file names column.', required = False)
+p.add_argument('-ld', metavar='<String>', help='Delimiter in \'-l\'. Default'+\
+               ' delimiter is TAB. Use quotes to indicate a whitespace like: '+\
+               '\' \'.', required=False, default='\t') 
+p.add_argument('-fcol', metavar='<Int>', help='Number of the column in \'-l\''+\
+               ' containing the sdi file names.', required=False, default=1,
+               type=int)
+p.add_argument('-scol', metavar='<Int>', help='Number of the column in \'-l\''+\
+               ' containing the strain names', required=False, default=2,
+               type=int)
+p.add_argument('-ref', metavar='<String>', help='Name of the reference strain'+\
+               ' used for the alignment in the sdi files', required=True)
+p.add_argument('-chr', metavar='<String>', help='Choose a chromosome to '+\
+               'process. By default all chromosomes are processed into a single'+\
+               ' SNP table. Indicate the value of chromosome as it occurs in '+\
+               'the sdi files', required=False)
+p.add_argument('-f', help='Indel filtering. By default indel alleles for '+\
+               'sites that are SNPs for other strains are converted to N. By '+\
+               'providing this flag these sites will be excluded entirely.',
+               required=False, action='store_true')
+
+if len(argv) == 1:
+    p.print_help()
+    exit(0)
+
+args = p.parse_args()
+
+if not args.p[-1] == '/': args.p = args.p + '/'
+
+ls = [ i for i in check_output(['ls', args.p]).split('\n') if search('sdi', i) ]
+rel = [ i.split(args.ld) for i in open(args.l).read().split('\n')[:-1] ]
+files = [ ( i, [j[args.scol-1] for j in rel if
+            j[args.fcol-1] == i.strip('.sdi.gz')][0] )
+          for i in ls if i.strip('.sdi.gz') in
+          [j[args.fcol-1] for j in rel] ]
+sdi = [ [i.split('\t') for i in
+         gzip.open(args.p + j[0]).read().split('\n')[:-1]]
+         for j in files if search('gz', j[0]) ] +\
+        [ [i.split('\t') for i in
+           open(args.p + j[0]).read().split('\n')[:-1]]
+         for j in files if not search('gz', j[0]) ]
+chrom = sorted(list(set(chain.from_iterable([set([i[0] for i in j]) 
+                                             for j in sdi]))))
+unipos = [sorted(list(set(chain.from_iterable([[int(i[1]) for i in j
+                                                if i[0] == k]
+                                                for j in sdi])))) 
+          for k in chrom]
+
+def findRef(x):
+    for i in x:
+        if i[2] == '0':
+            return i[3]
+
+def maskIndel(aux):
+    for j, k in enumerate(aux):
+        if k[2] != '0':
+            aux[j][4] = 'N'
+    return aux
+
+with open('test_table', 'wb') as out:
+    out.write('\t'.join(['chromosome', 'position', args.ref] + 
+                        [i[1] for i in files]) + '\n')
+
+    for i in [[chrom.index(args.chr)], range(len(chrom))][args.chr is None]:
+        
+        sdi_i = [[j for j in k if j[0] == chrom[i]] for k in sdi]
+        sdi_i_pos = [[int(j[1]) for j in k] for k in sdi_i]
+        
+        for pos in unipos[i]:
+        
+            pos_inc = [(j, sdi_i_pos[j].index(pos)) 
+                       for j in range(len(sdi_i_pos)) if pos in sdi_i_pos[j]]
+            aux = [sdi_i[j[0]][j[1]] for j in pos_inc]
+            
+            if not '0' in [j[2] for j in aux]: continue
+            if args.f and sum([int(j[2]) for j in aux]) != 0: continue
+            
+            ref = findRef(aux)
+            
+            if not args.f:
+                aux = maskIndel(aux)
+            
+            aux1 = [ref for j in range(len(files))]
+            
+            for j in range(len(pos_inc)):
+                aux1[pos_inc[j][0]] = aux[j][4]
+
+            out.write('\t'.join([chrom[i], str(pos), ref] + aux1) + '\n')
+
+
