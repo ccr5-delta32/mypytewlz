@@ -14,8 +14,8 @@ p = ArgumentParser(prog='sdi2snp', description='Produce a SNP table out of an'+\
                    ' arbitrary bunch of sdi files, which may be in the'+\
                    ' form of gzip archives. This may take quite a while'+\
                    ' when many sdi files are processed and it will need'+\
-                   ' a lots of memory too!')
-p.add_argument('-p', metavar='<String>', help='Path containing the sdi files',
+                   ' a lots of memory too (eg. 14Gb for 80 A.thaliana sdi)!')
+p.add_argument('-sdi', metavar='<String>', help='Path containing the sdi files',
                required=True)
 p.add_argument('-l', metavar='<String>', help='list relating file names to '+\
                'strain names. Use -fcol and -scol to indicate the respective'+\
@@ -41,7 +41,9 @@ p.add_argument('-f', help='Indel filtering. By default indel alleles for '+\
                'sites that are SNPs for other strains are converted to N. By '+\
                'providing this flag these sites will be excluded entirely.',
                required=False, action='store_true')
-p.add_argument('-out', help='Output file name', required=True)
+p.add_argument('-out', metavar='<string>', help='Output file name', 
+               required=True)
+p._optionals.title='options'
 
 if len(argv) == 1:
     p.print_help()
