@@ -68,7 +68,7 @@ else: pos = range(1, len(seq[0])+1)
 
 seq_pop_indx = [[label.index(j.strip('>')) for j in 
                  [x[args.lcol-1] for x in popinfo if
-                  x[args.pcol-1] == POP]] for POP in  pops]  
+                  x[args.pcol-1] == POP]] for POP in pops]  
 pop_indx = [pops.index(i) for i in args.P]
 
 def allSeqIndex(seq_pop_indx, pop_indx):
@@ -95,10 +95,8 @@ else: fOUT = '_'.join(args.P) + '.dadi'
 ## make dadi
 with open(fOUT, 'wb') as OUT:
     OUT.write('\t'.join(['Ingroup', 'Outgroup', 'Allele1'] + 
-                        ['pop'+str(i) for i in range(1, len(args.P)+1)] +
-                        ['Allele2'] + ['pop'+str(i) for i in 
-                                       range(1, len(args.P)+1)] +
-                        ['Gene', 'Position']) + '\n')
+                        [i for i in args.P] + ['Allele2'] +
+                        [i for i in args.P] + ['Gene', 'Position']) + '\n') 
     for i in range(len(seq[0])):
         allseq = [seq[j][i] for j in allSeqIndex(seq_pop_indx, pop_indx) + [out]]
         allset = list(set(allseq))
