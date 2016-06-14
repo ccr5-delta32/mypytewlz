@@ -92,9 +92,9 @@ def findRef(x):
             return i[3]
 
 def maskIndel(aux):
-    for j, k in enumerate(aux):
-        if k[2] != '0':
-            aux[j][4] = 'N'
+    for i, j in enumerate(aux):
+        if j[2] != '0':
+            aux[i][4] = 'N'
     return aux
 
 with open(args.out, 'wb') as out:
@@ -113,19 +113,20 @@ with open(args.out, 'wb') as out:
                        for j in prange if pos in sdi_i_pos[j]]
             aux = [sdi_i[j[0]][j[1]] for j in pos_inc]
             
-            if not '0' in [j[2] for j in aux]: continue
-            if args.f and aux.count('0') != len(aux): continue
+            aux1 = [j[2] for j in aux]
+            if not '0' in aux1: continue
+            if args.f and aux1.count('0') != len(aux): continue
             
             ref = findRef(aux)
             
             if not args.f:
                 aux = maskIndel(aux)
             
-            aux1 = [ref for j in frange]
+            aux2 = [ref for j in frange]
             
             for j in range(len(pos_inc)):
-                aux1[pos_inc[j][0]] = aux[j][4]
+                aux2[pos_inc[j][0]] = aux[j][4]
 
-            out.write('\t'.join([chrom[i], str(pos), ref] + aux1) + '\n')
+            out.write('\t'.join([chrom[i], str(pos), ref] + aux2) + '\n')
 
 
