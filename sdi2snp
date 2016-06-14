@@ -14,7 +14,7 @@ p = ArgumentParser(prog='sdi2snp', description='Produce a SNP table out of an'+\
                    ' arbitrary bunch of sdi files, which may be in the'+\
                    ' form of gzip archives. This may take quite a while'+\
                    ' when many sdi files are processed and it will need'+\
-                   ' a lots of memory too (eg. 14Gb for 80 A.thaliana sdi)!')
+                   ' lots of memory too (eg. 14Gb for 80 A.thaliana sdi)!')
 p.add_argument('-sdi', metavar='<String>', help='Path containing the sdi files',
                required=True)
 p.add_argument('-l', metavar='<String>', help='list of files to process and'+\
