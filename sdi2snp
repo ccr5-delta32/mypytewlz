@@ -69,6 +69,7 @@ files = [ ( i, [j[args.scol-1] for j in rel if
             j[args.fcol-1] == i.strip('.sdi.gz')][0] )
           for i in ls if i.strip('.sdi.gz') in
           [j[args.fcol-1] for j in rel] ]
+frange = range(len(files))
 
 sdi = [ [i.split('\t') for i in
          gzip.open(args.sdi + j[0]).read().split('\n')[:-1]]
@@ -104,22 +105,23 @@ with open(args.out, 'wb') as out:
         
         sdi_i = [[j for j in k if j[0] == chrom[i]] for k in sdi]
         sdi_i_pos = [[int(j[1]) for j in k] for k in sdi_i]
-        
+        prange = range(len(sdi_i_pos))
+
         for pos in unipos[i]:
         
             pos_inc = [(j, sdi_i_pos[j].index(pos)) 
-                       for j in range(len(sdi_i_pos)) if pos in sdi_i_pos[j]]
+                       for j in prange if pos in sdi_i_pos[j]]
             aux = [sdi_i[j[0]][j[1]] for j in pos_inc]
             
             if not '0' in [j[2] for j in aux]: continue
-            if args.f and sum([int(j[2]) for j in aux]) != 0: continue
+            if args.f and aux.count('0') != len(aux): continue
             
             ref = findRef(aux)
             
             if not args.f:
                 aux = maskIndel(aux)
             
-            aux1 = [ref for j in range(len(files))]
+            aux1 = [ref for j in frange]
             
             for j in range(len(pos_inc)):
                 aux1[pos_inc[j][0]] = aux[j][4]
