@@ -17,11 +17,15 @@ p = ArgumentParser(prog='sdi2snp', description='Produce a SNP table out of an'+\
                    ' a lots of memory too (eg. 14Gb for 80 A.thaliana sdi)!')
 p.add_argument('-sdi', metavar='<String>', help='Path containing the sdi files',
                required=True)
-p.add_argument('-l', metavar='<String>', help='list relating file names to '+\
-               'strain names. Use -fcol and -scol to indicate the respective'+\
-               ' column numbers in the list; defaults to columns 1 and 2.'+\
+p.add_argument('-l', metavar='<String>', help='list of files to process and'+\
+               ' that relates file names to strain names. Use -fcol and'+\
+               ' -scol to indicate the respective column numbers in the'+\
+               ' list (defaults to columns 1 and 2).i\n'+\
                ' The file extensions (.sdi or .sdi.gz) are not required to '+\
-               ' be included in the file names column.', required = False)
+               ' be included in the file names column.\nWhen -l is omitted'+\
+               ' the file names themselves minus extensions will be used as'+\
+               ' strain names, and all sdi files in the path will be processed', 
+               required = False)
 p.add_argument('-ld', metavar='<String>', help='Delimiter in \'-l\'. Default'+\
                ' delimiter is TAB. Use quotes to indicate a whitespace like: '+\
                '\' \'.', required=False, default='\t') 
@@ -51,22 +55,31 @@ if len(argv) == 1:
 
 args = p.parse_args()
 
-if not args.p[-1] == '/': args.p = args.p + '/'
+if not args.sdi[-1] == '/': args.sdi = args.sdi + '/'
 
-ls = [ i for i in check_output(['ls', args.p]).split('\n') if search('sdi', i) ]
-rel = [ i.split(args.ld) for i in open(args.l).read().split('\n')[:-1] ]
+ls = [ i for i in check_output(['ls', args.sdi]).split('\n') if search('sdi', i) ]
+
+if args.l:
+    rel = [ i.split(args.ld) for i in open(args.l).read().split('\n')[:-1] ]
+else:
+    rel = [ [i.strip('.sdi.gz'), i.strip('.sdi.gz')] for i in ls]
+    args.fcol=0; args.scol=1
+
 files = [ ( i, [j[args.scol-1] for j in rel if
             j[args.fcol-1] == i.strip('.sdi.gz')][0] )
           for i in ls if i.strip('.sdi.gz') in
           [j[args.fcol-1] for j in rel] ]
+
 sdi = [ [i.split('\t') for i in
-         gzip.open(args.p + j[0]).read().split('\n')[:-1]]
+         gzip.open(args.sdi + j[0]).read().split('\n')[:-1]]
         for j in files if search('gz', j[0]) ] +\
       [ [i.split('\t') for i in
-         open(args.p + j[0]).read().split('\n')[:-1]]
+         open(args.sdi + j[0]).read().split('\n')[:-1]]
         for j in files if not search('gz', j[0]) ]
+
 chrom = sorted(list(set(chain.from_iterable([set([i[0] for i in j]) 
                                              for j in sdi]))))
+
 unipos = [sorted(list(set(chain.from_iterable([[int(i[1]) for i in j
                                                 if i[0] == k]
                                                 for j in sdi])))) 
