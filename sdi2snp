@@ -37,10 +37,9 @@ p.add_argument('-scol', metavar='<Int>', help='Number of the column in \'-l\''+\
                type=int)
 p.add_argument('-ref', metavar='<String>', help='Name of the reference strain'+\
                ' used for the alignment in the sdi files', required=True)
-p.add_argument('-chr', metavar='<String>', help='Choose a chromosome to '+\
-               'process. By default all chromosomes are processed into a single'+\
-               ' SNP table. Indicate the value of chromosome as it occurs in '+\
-               'the sdi files', required=False)
+p.add_argument('-chr', metavar='<String>', help='Provide the value of the '+\
+               'chromosome to process as it occurs in the sdi files', 
+               required=True)
 p.add_argument('-f', help='Indel filtering. By default indel alleles for '+\
                'sites that are SNPs for other strains are converted to N. By '+\
                'providing this flag these sites will be excluded entirely.',
@@ -57,34 +56,53 @@ args = p.parse_args()
 
 if not args.sdi[-1] == '/': args.sdi = args.sdi + '/'
 
+## Select sdi files
 ls = [ i for i in check_output(['ls', args.sdi]).split('\n') if search('sdi', i) ]
-
-if args.l:
-    rel = [ i.split(args.ld) for i in open(args.l).read().split('\n')[:-1] ]
-else:
-    rel = [ [i.strip('.sdi.gz'), i.strip('.sdi.gz')] for i in ls]
-    args.fcol=0; args.scol=1
-
+rel = [ i.split(args.ld) for i in open(args.l).read().split('\n')[:-1] ]
 files = [ ( i, [j[args.scol-1] for j in rel if
             j[args.fcol-1] == i.strip('.sdi.gz')][0] )
           for i in ls if i.strip('.sdi.gz') in
           [j[args.fcol-1] for j in rel] ]
-frange = range(len(files))
 
-sdi = [ [i.split('\t') for i in
-         gzip.open(args.sdi + j[0]).read().split('\n')[:-1]]
-        for j in files if search('gz', j[0]) ] +\
-      [ [i.split('\t') for i in
-         open(args.sdi + j[0]).read().split('\n')[:-1]]
-        for j in files if not search('gz', j[0]) ]
+## List of file objects
+handler = [ gzip.open(args.sdi + j[0]) for j in files if search('gz', j[0]) ] +\
+          [ open(args.sdi + j[0]) for j in files if not search('gz', j[0]) ]  
+h_iter = xrange(len(handler))
+length = len(h_iter)
 
-chrom = sorted(list(set(chain.from_iterable([set([i[0] for i in j]) 
-                                             for j in sdi]))))
+## Funtions
+def getData(handler, args_f, h_iter, args_chr, length, 
+            dat = None):
+    if dat is None:
+        dat = getData_start(handler, args_chr, h_iter)    
+    else:
+        dat[0] = [ dat[0][i] if not dat[1][i] else 
+                   handler[i].readline().split('\t')
+                   for i in h_iter ]
+    dat[0] = [dat[0][i] if len(dat[0][i]) > 4 else
+              ('END', '999999999', '-1', 'X', 'X') for i in h_iter]
+    chrpos = [(i[0], int(i[1])) for i in dat[0]]
+    minpos = min([i[1] for i in chrpos])
+    dat[1] = [True if chrpos[i][1] == minpos and chrpos[i][0] == args_chr
+                   else False for i in h_iter]
+    if sum(dat[1]) == 0: return None
+    zero = [dat[0][i][2] for i in h_iter if dat[1][i]]
+    if '0' not in zero or (args_f and zero.count('0') != len(zero)):
+        dat = getData(handler, args_f, h_iter, args_chr, length, dat)
+    return dat 
 
-unipos = [sorted(list(set(chain.from_iterable([[int(i[1]) for i in j
-                                                if i[0] == k]
-                                                for j in sdi])))) 
-          for k in chrom]
+def getData_start(handler, args_chr, h_iter,
+                  cdat = [[None for i in h_iter],
+                  [True for i in h_iter]]):
+    while True:
+        cdat[0] = [ cdat[0][i] if not cdat[1][i] else
+                    handler[i].readline().split('\t')
+                    for i in h_iter ]
+        cdat[1] = [cdat[0][i][0] != args_chr for i in h_iter]
+        if sum([len(i) for i in cdat[0]]) == 0:
+            exit(args_chr + ' not found in the sdi tables!')
+        if sum(cdat[1]) == 0:
+            return cdat
 
 def findRef(x):
     for i in x:
@@ -92,41 +110,31 @@ def findRef(x):
             return i[3]
 
 def maskIndel(aux):
-    for i, j in enumerate(aux):
-        if j[2] != '0':
-            aux[i][4] = 'N'
+    minpos = min([int(i[1]) for i in aux[0]])
+    for i, j in enumerate(aux[0]):
+        if int(j[1]) == minpos and j[2] != '0':
+            aux[0][i][4] = 'N'
+            aux[1][i] = True 
     return aux
 
+## Make the table
 with open(args.out, 'wb') as out:
     out.write('\t'.join(['chromosome', 'position', args.ref] + 
                         [i[1] for i in files]) + '\n')
 
-    for i in [[chrom.index(args.chr)], range(len(chrom))][args.chr is None]:
+    while True:
+        if 'data' not in locals() or 'data' not in globals():
+            data = getData(handler,args.f, h_iter, args.chr, length)
+        else:
+            data = getData(handler,args.f, h_iter, args.chr, length, data)
         
-        sdi_i = [[j for j in k if j[0] == chrom[i]] for k in sdi]
-        sdi_i_pos = [[int(j[1]) for j in k] for k in sdi_i]
-        prange = range(len(sdi_i_pos))
+        if data is None: break
 
-        for pos in unipos[i]:
-        
-            pos_inc = [(j, sdi_i_pos[j].index(pos)) 
-                       for j in prange if pos in sdi_i_pos[j]]
-            aux = [sdi_i[j[0]][j[1]] for j in pos_inc]
-            
-            aux1 = [j[2] for j in aux]
-            if not '0' in aux1: continue
-            if args.f and aux1.count('0') != len(aux): continue
-            
-            ref = findRef(aux)
-            
-            if not args.f:
-                aux = maskIndel(aux)
-            
-            aux2 = [ref for j in frange]
-            
-            for j in range(len(pos_inc)):
-                aux2[pos_inc[j][0]] = aux[j][4]
+        if not args.f:
+            data = maskIndel(data)
 
-            out.write('\t'.join([chrom[i], str(pos), ref] + aux2) + '\n')
-
-
+        ref = findRef([data[0][i] for i in h_iter if data[1][i]])    
+        pos = data[0][[i for i in h_iter if data[1][i]][0]][1] 
+        res = [args.chr, pos, ref] + [ data[0][i][4] if data[1][i] else ref
+                                       for i in h_iter ]
+        out.write('\t'.join(res) + '\n') 
