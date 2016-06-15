@@ -12,9 +12,7 @@ import gzip
 
 p = ArgumentParser(prog='sdi2snp', description='Produce a SNP table out of an'+\
                    ' arbitrary bunch of sdi files, which may be in the'+\
-                   ' form of gzip archives. This may take quite a while'+\
-                   ' when many sdi files are processed and it will need'+\
-                   ' lots of memory too (eg. 14Gb for 80 A.thaliana sdi)!')
+                   ' form of gzip archives.')
 p.add_argument('-sdi', metavar='<String>', help='Path containing the sdi files',
                required=True)
 p.add_argument('-l', metavar='<String>', help='list of files to process and'+\
@@ -104,7 +102,8 @@ def getData_start(handler, args_chr, h_iter,
         if sum(cdat[1]) == 0:
             return cdat
 
-def findRef(x):
+def findRef(aux, h_iter):
+    x = [aux[0][i] for i in h_iter if aux[1][i]]
     for i in x:
         if i[2] == '0':
             return i[3]
@@ -133,7 +132,7 @@ with open(args.out, 'wb') as out:
         if not args.f:
             data = maskIndel(data)
 
-        ref = findRef([data[0][i] for i in h_iter if data[1][i]])    
+        ref = findRef(data, h_iter)    
         pos = data[0][[i for i in h_iter if data[1][i]][0]][1] 
         res = [args.chr, pos, ref] + [ data[0][i][4] if data[1][i] else ref
                                        for i in h_iter ]
