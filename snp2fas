@@ -5,12 +5,15 @@
 '''
 
 from subprocess import call
-from sys import exit, argv
+from sys import exit, argv, stdout
 from argparse import ArgumentParser
-from uuid import uuid4
+from math import ceil
+from hashlib import md5
 
 p = ArgumentParser(prog='snp2fas', description='Produce FASTA alignments'+\
                    ' for arbitrary regions and sets of accessions')
+p.add_argument('-s', help='Silent. Do not report what is going on.', 
+               action='store_true')
 p.add_argument('-snp', metavar='<String>', help='Path to SNP table',
                required=True)
 p.add_argument('-t', metavar='<Int>', help='5\' position. Omit to '+\
@@ -27,7 +30,7 @@ p.add_argument('-f', help='Convert ambiguous base calls '+\
 p.add_argument('-F', help='Exclude sites with any ambiguous '+\
                'base calls or \'N\'.', required=False, action='store_true') 
 p.add_argument('-m', help='Include sites that are monomorphic in the '+\
-               'ingroup', required=False, action='store_true')
+               'ingroup.', required=False, action='store_true')
 p.add_argument('-i', metavar='<String>', help='Path to list of accessions to '+\
                'include. When -i is given the argument \'makelist\' it will '+\
                'produce a file with the header of the SNP table, which can be'+\
@@ -36,7 +39,23 @@ p.add_argument('-i', metavar='<String>', help='Path to list of accessions to '+\
 p.add_argument('-out', metavar='<String>', help='Indicate the outgroup in '+\
                'the SNP table in case you want it included in the fasta '+\
                'alignment when selecting only a subset of accessions from '+\
-               'the SNP table', required=False)
+               'the SNP table.', required=False)
+p.add_argument('-xout', help='Use this if you have an '+\
+               'external file containing the outgroup aligned to *the same*'+\
+               ' reference as used in the SNP table. The file is expected to'+\
+               ' be organized into columns for, at least, chromosome,'+\
+               ' position, and allele of the outgroup. Provide, separated'+\
+               ' with whitespace: 1) Path to this file, 2) number of the '+\
+               'column containing chromosome, 3) value of the chromosome in '+\
+               '(2) corresponding to the current SNP table being processed, '+\
+               '4) number of the column containing position, 5) number of the'+\
+               ' column containing outgroup allele, 6) a name for the out'+\
+               'group to use in the fasta. Additionally, if -xout '+\
+               'also contains a column with coverage information and you '+\
+               'want to filter based on this, add: 7) number of the column'+\
+               ' with coverage, and 8) cutoff value for coverage. Sites '+\
+               ' that do not occur or have too low coverage in the outgroup '+\
+               'are then excluded entirely.', required=False, nargs='+')
 
 if len(argv) == 1:
     p.print_help()
@@ -44,9 +63,93 @@ if len(argv) == 1:
 
 args = p.parse_args()
 
+if args.out and args.xout:
+    exit('Error: Please use only one of -out and -xout')
+if len(args.xout) not in [6, 8]:
+    exit('Error: -xout should be provided with either 6 or 8 arguments')
+
+if not args.s:
+    print(chr(27) + '[2J' + chr(27) + '[;H')
+    print 'Producing fasta alignment from ' + args.snp.split('/')[-1] +\
+           [' using ' + args.xout[0].split('/')[-1] + ' (' + args.xout[5] +\
+           ') as external outgroup.',''][args.xout is None] + '\n'
+
+def splitAndOpen(file, chrcol, Chr, poscol, args_t = None, args_b = None):
+    if not args.s: 
+        print 'Splitting ' + file.split('/')[-1] + ' to isolate ' +\
+              ['from ' + str([args_t, 'the beginning'][args_t is None]) +\
+              ' to ' + str([args_b, 'the end'][args_t is None]) +\
+              ' on chromosome ' + str(Chr), 'chromosome ' + str(Chr)]\
+                [args_t is None and args_b is None]
+    cmd = '$%(chrcol)s == \"%(chr)s\" && $%(poscol)s >= ' %\
+          {"chrcol": chrcol, "chr": Chr, "poscol": poscol} +\
+          str([args_t, 1][args_t is None]) + ' && $%(poscol)s <= ' %\
+          {"poscol": poscol} + str([args_b, 9999999999][args_b is None]) 
+    uni_ex = md5(''.join([str(j) for i, j in vars(args).iteritems()]).encode())
+    tmp = file.split('/')[-1] +  '.' + uni_ex.hexdigest() 
+    with open(tmp, 'wb') as outfile:
+        call(['awk', cmd, file], stdout=outfile)
+    if not args.s:
+        print 'Reading the part excised from ' + file.split('/')[-1]
+    dat = [tuple(i.split('\t')) for i in open(tmp).read().split('\n')[:-1]]
+    #call([ 'rm', tmp ])
+    return dat 
+
+def getCommon(snps, xout):
+    if not args.s:
+        print 'Filtering ' + args.xout[0].split('/')[-1] + ' according to '+\
+               args.snp.split('/')[-1] + '\n'
+    slength=len(snps)
+    xlength=len(xout)
+    xrng = xrange(2, len(xout[0]))
+    filler = ['n' for j in xrng]
+    if len(args.xout) > 6:
+        filler[args.xout[6]-2] = 0
+    res = [[args.xout[2], snps[i][1]] + filler for i in xrange(slength)]
+    itr = xrange(xlength).__iter__() 
+    i = itr.next()
+    current = 0
+    while current < slength and i < xlength-1:
+        
+        if not args.s:
+            chkpnt = int(ceil(slength/100))
+            if current >= chkpnt and current % chkpnt == 0: 
+               perc = int(ceil(min(100*current/float(slength), 100)))
+               stdout.write("\033[F\033[K")
+               print '.'*(perc/2) + str(perc) + '%'
+
+        if i > xlength:
+            print 'premature end of xout'
+            return res
+        
+        if int(xout[i][args.xout[3]]) < int(snps[current][1]): 
+            i = itr.next()
+            continue
+        elif xout[i][args.xout[3]] == snps[current][1]:
+            res[current] = xout[i]
+            current += 1
+            i = itr.next()
+            continue
+        elif int(xout[i][args.xout[3]]) > int(snps[current][1]):
+            current += 1
+            continue
+        else:
+            print 'Something is wrong here:'
+            print snps[current]
+            print xout[i]
+            return res
+    return res
+
+def maskAmbiguity(snp, inc_indx):
+    for indx, value in enumerate([snp[i] for i in inc_indx]):
+        if value not in nucl:
+            snp[indx] = 'N'
+    return snp
+            
+with open(args.snp, 'r') as IN:
+    header = IN.readline().strip('\n').split('\t')
+
 if args.i:
-    with open(args.snp, 'r') as IN:
-        header = IN.readline().strip('\n').split('\t')
     if args.i == 'makelist':
         with open(args.snp.split('/')[-1] + '.list', 'w') as OUT:
             for i in header: 
@@ -58,62 +161,95 @@ if args.i:
     else:
         inc_indx = [header.index(i) for i in\
                     open(args.i).read().split('\n')[:-1]]
-
-if args.t or args.b: 
-    composite1 = '$2>=' + str([args.t, 1][args.t is None]) +\
-                 ' && $2<=' + str([args.b, 9999999999][args.b is None])
-    tmp = str(id(composite1)) + '.DeleteMe'
-    with open(tmp, 'w') as outfile:
-        call(['awk', composite1, args.snp], stdout=outfile)
-        snps = [i.split('\t') for i in open(tmp).read().split('\n')][:-1]
-    call([ 'rm', tmp ])
 else:
+    inc_indx = range(len(header))[2:]
+i_iter = xrange(len(inc_indx))
+        
+if args.t or args.b: 
+    snps = splitAndOpen(args.snp, 1, 'Chr1', 2, [args.t, None][args.t is None],
+                        [args.b, None][args.b is None])
+else:
+    if not args.s:
+        print 'Reading ' + args.snp.split('/')[-1]
     snps = [i.split('\t') for i in open(args.snp).read().split('\n')][1:-1]
-    if not inc_indx:
-        inc_indx = range(2,len(snps[0])-1)
+
+if args.out: 
+    out_indx = header.index(args.out)
+    out_lab = args.out
+elif args.xout:
+    xout = splitAndOpen(args.xout[0], args.xout[1], args.xout[2], args.xout[3], 
+                        [args.t, None][args.t is None], 
+                        [args.b, None][args.b is None])
+    for i in range(len(args.xout)):
+        if i in [1,3,4]:
+            args.xout[i] = int(args.xout[i]) - 1
+    xout = getCommon(snps, xout)
+    cutoff = None
+    out_lab = args.xout[5]
+    if len(args.xout) > 6:
+        cutoff = int(args.xout[7])
 
 fasta = [[] for i in inc_indx]
+outgroup = []
 positions = []
-if args.out: 
-    outgroup = []
-    out_indx = header.index(args.out)
 nucl = ['A', 'G', 'C', 'T']
+counter = 0
+length = [int(len(snps)/100), len(snps)-1]
+nsnp = len(snps)
 
-for snp in snps:
+if not args.s: 
+    print 'Preparing fasta' + '\n'
+for spos in xrange(nsnp):
     
+    counter += 1
+    snp = list(snps[spos])
+
     if not args.m and len(set([snp[i] for i in inc_indx])) == 1: continue
+    
+    aux = None
+    if args.out:
+        aux = snp[out_indx]
+    elif args.xout:
+        tmp = xout[spos] 
+        if cutoff is not None and int(tmp[args.xout[6]]) < cutoff: continue
+        aux = tmp[args.xout[4]] 
 
     if args.F:
-        if True in [snp[i] not in nucl for i in inc_indx]: continue
+        if True in [snp[i] not in nucl for i in inc_indx] or\
+            (aux is not None and aux not in nucl): continue
     if args.f:
-        for indx, value in enumerate([snp[i] for i in inc_indx]):
-            if value not in nucl:
-                snp[indx] = 'N'
+        snp = maskAmbiguity(snp, inc_indx)
+        if aux is not None and aux not in nucl + ['N']:
+            aux = 'N'
 
     positions.append(snp[1])
-    [fasta[i].append(snp[inc_indx[i]]) for i in range(len(inc_indx))]
-
-    if args.out:
-        outgroup.append(snp[out_indx])
+    [fasta[i].append(snp[inc_indx[i]]) for i in i_iter]
+    if args.out or args.xout:
+        outgroup.append(aux)
+    
+    if counter % [length[0], length[1]][length[1] < 100] == 0:
+        stdout.write("\033[F\033[K")
+        print 'position ' + snp[1] + ': ' +\
+               str(int(min(ceil(counter / length[0]), 100))) + '%'
 
 if not args.o:
-    vOUTPUT = args.snp.split('/')[-1]  
+    OUT = args.snp.split('/')[-1]  
 else:
-    vOUPUT = args.o
+    OUT = args.o
 
 if len(fasta[0]) == 0:
     exit('No sites passed filtering!')
 
-print 'Writing ' + str(len(fasta[0])) + ' sites to fasta alignment'
+print 'Writing ' + str(len(fasta[0])) + ' sites to ' + OUT
 
-with open(vOUTPUT + '.pos', 'wb') as output:
+with open(OUT + '.pos', 'wb') as output:
     for pos in positions:
         output.write(str(pos) + '\n')
 
-with open(vOUTPUT + '.fa', 'wb') as output:
-    for i in range(len(inc_indx)):
+with open(OUT + '.fa', 'wb') as output:
+    for i in i_iter:
         output.write('>' + header[inc_indx[i]] + '\n')
         output.write(''.join(fasta[i]) + '\n')
-        if args.out:
-            output.write('>' + header[out_indx] + '\n')
-            output.write(''.join(outgroup))
+    if args.out or args.xout:
+        output.write('>' + out_lab + '\n')
+        output.write(''.join(outgroup))
