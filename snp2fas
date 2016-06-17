@@ -92,7 +92,7 @@ def splitAndOpen(file, chrcol, Chr, poscol, args_t = None, args_b = None):
     if not args.s:
         print 'Reading the part excised from ' + file.split('/')[-1]
     dat = [tuple(i.split('\t')) for i in open(tmp).read().split('\n')[:-1]]
-    #call([ 'rm', tmp ])
+    call([ 'rm', tmp ])
     return dat 
 
 def getCommon(snps, xout):
