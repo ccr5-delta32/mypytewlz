@@ -28,11 +28,11 @@ p.add_argument('-ld', metavar='<String>', help='Delimiter in \'-l\'. Default'+\
                ' delimiter is TAB. Use quotes to indicate a whitespace like: '+\
                '\' \'.', required=False, default='\t') 
 p.add_argument('-fcol', metavar='<Int>', help='Number of the column in \'-l\''+\
-               ' containing the sdi file names.', required=False, default=1,
-               type=int)
+               ' containing the sdi file names (default=1).', required=False, 
+               default=1, type=int)
 p.add_argument('-scol', metavar='<Int>', help='Number of the column in \'-l\''+\
-               ' containing the strain names', required=False, default=2,
-               type=int)
+               ' containing the strain names (default=2)', required=False, 
+               default=2, type=int)
 p.add_argument('-ref', metavar='<String>', help='Name of the reference strain'+\
                ' used for the alignment in the sdi files', required=True)
 p.add_argument('-chr', metavar='<String>', help='Provide the value of the '+\
@@ -55,7 +55,7 @@ args = p.parse_args()
 if not args.sdi[-1] == '/': args.sdi = args.sdi + '/'
 
 ## Select sdi files
-ls = [ i for i in check_output(['ls', args.sdi]).split('\n') if search('sdi', i) ]
+ls = [i for i in check_output(['ls', args.sdi]).split('\n') if search('sdi', i)]
 
 if args.l:
     rel = [ i.split(args.ld) for i in open(args.l).read().split('\n')[:-1] ]
@@ -88,11 +88,18 @@ def getData(handler, args_f, h_iter, args_chr, length,
     chrpos = [(i[0], int(i[1])) for i in dat[0]]
     minpos = min([i[1] for i in chrpos])
     dat[1] = [True if chrpos[i][1] == minpos and chrpos[i][0] == args_chr
-                   else False for i in h_iter]
+              else False for i in h_iter]
     if sum(dat[1]) == 0: return None
-    zero = [dat[0][i][2] for i in h_iter if dat[1][i]]
-    if '0' not in zero or (args_f and zero.count('0') != len(zero)):
-        dat = getData(handler, args_f, h_iter, args_chr, length, dat)
+
+    lenchk = [len(dat[0][i][4])-1 + len(dat[0][i][3])-1 
+              for i in h_iter if dat[1][i]]
+    if args_f:
+        y = True in [dat[0][i][4] == '-' for i in h_iter if dat[1][i]]
+        if y or sum(lenchk) != 0:
+            dat = getData(handler, args_f, h_iter, args_chr, length, dat)
+    else:
+        if 0 not in lenchk:
+            dat = getData(handler, args_f, h_iter, args_chr, length, dat)
     return dat 
 
 def getData_start(handler, args_chr, h_iter,
@@ -111,13 +118,14 @@ def getData_start(handler, args_chr, h_iter,
 def findRef(aux, h_iter):
     x = [aux[0][i] for i in h_iter if aux[1][i]]
     for i in x:
-        if i[2] == '0':
+        if i[2] == '0' and len(i[3]) == 1:
             return i[3]
+    return -1
 
 def maskIndel(aux):
     minpos = min([int(i[1]) for i in aux[0]])
     for i, j in enumerate(aux[0]):
-        if int(j[1]) == minpos and j[2] != '0':
+        if int(j[1]) == minpos and j[2] != '0' or len(j[4]) != 1:
             aux[0][i][4] = 'N'
             aux[1][i] = True 
     return aux
@@ -127,18 +135,15 @@ with open(args.out, 'wb') as out:
     out.write('\t'.join(['chromosome', 'position', args.ref] + 
                         [i[1] for i in files]) + '\n')
 
+    data = None
     while True:
-        if 'data' not in locals() or 'data' not in globals():
-            data = getData(handler,args.f, h_iter, args.chr, length)
-        else:
-            data = getData(handler,args.f, h_iter, args.chr, length, data)
-        
+        data = getData(handler,args.f, h_iter, args.chr, length, data)
         if data is None: break
 
+        ref = findRef(data, h_iter)
+        if ref == -1: continue
         if not args.f:
             data = maskIndel(data)
-
-        ref = findRef(data, h_iter)    
         pos = data[0][[i for i in h_iter if data[1][i]][0]][1] 
         res = [args.chr, pos, ref] + [ data[0][i][4] if data[1][i] else ref
                                        for i in h_iter ]
