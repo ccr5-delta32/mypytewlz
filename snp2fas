@@ -46,16 +46,18 @@ p.add_argument('-xout', help='Use this if you have an '+\
                ' be organized into columns for, at least, chromosome,'+\
                ' position, and allele of the outgroup. Provide, separated'+\
                ' with whitespace: 1) Path to this file, 2) number of the '+\
-               'column containing chromosome, 3) value of the chromosome in '+\
-               '(2) corresponding to the current SNP table being processed, '+\
-               '4) number of the column containing position, 5) number of the'+\
-               ' column containing outgroup allele, 6) a name for the out'+\
-               'group to use in the fasta. Additionally, if -xout '+\
-               'also contains a column with coverage information and you '+\
-               'want to filter based on this, add: 7) number of the column'+\
-               ' with coverage, and 8) cutoff value for coverage. Sites '+\
-               ' that do not occur or have too low coverage in the outgroup '+\
-               'are then excluded entirely.', required=False, nargs='+')
+               'column containing chromosome (default=1), 3) value of the '+\
+               'chromosome in (2) corresponding to the current SNP table '+\
+               'being processed, 4) number of the column containing position'+\
+               ' (default=2), 5) number of the column containing outgroup '+\
+               'allele, 6) a name for the outgroup to use in the fasta. '+\
+               'Additionally, if -xout also contains a column with coverage '+\
+               'information and you want to filter based on this, add: 7) '+\
+               'number of the column with coverage, and 8) cutoff value for '+\
+               'coverage. Sites that do not occur or have too low coverage '+\
+               'in the outgroup are then excluded entirely.', 
+               required=False, nargs='+')
+p._optionals.title= 'Options' 
 
 if len(argv) == 1:
     p.print_help()
@@ -74,7 +76,12 @@ if not args.s:
            [' using ' + args.xout[0].split('/')[-1] + ' (' + args.xout[5] +\
            ') as external outgroup.',''][args.xout is None] + '\n'
 
-def splitAndOpen(file, chrcol, Chr, poscol, args_t = None, args_b = None):
+with open(args.snp, 'r') as IN:
+    header = IN.readline().strip('\n').split('\t')
+    CHR = IN.readline().strip('\n').split('\t', 1)[0]
+
+def splitAndOpen(file, chrcol=1, Chr=CHR, poscol=2, 
+                 args_t = None, args_b = None):
     if not args.s: 
         print 'Splitting ' + file.split('/')[-1] + ' to isolate ' +\
               ['from ' + str([args_t, 'the beginning'][args_t is None]) +\
@@ -110,18 +117,12 @@ def getCommon(snps, xout):
     i = itr.next()
     current = 0
     while current < slength and i < xlength-1:
-        
         if not args.s:
             chkpnt = int(ceil(slength/100))
             if current >= chkpnt and current % chkpnt == 0: 
                perc = int(ceil(min(100*current/float(slength), 100)))
                stdout.write("\033[F\033[K")
                print '.'*(perc/2) + str(perc) + '%'
-
-        if i > xlength:
-            print 'premature end of xout'
-            return res
-        
         if int(xout[i][args.xout[3]]) < int(snps[current][1]): 
             i = itr.next()
             continue
@@ -134,10 +135,8 @@ def getCommon(snps, xout):
             current += 1
             continue
         else:
-            print 'Something is wrong here:'
-            print snps[current]
-            print xout[i]
-            return res
+            exit('Something is wrong here:')
+            print snps[current], xout[i]
     return res
 
 def maskAmbiguity(snp, inc_indx):
@@ -163,10 +162,9 @@ if args.i:
                     open(args.i).read().split('\n')[:-1]]
 else:
     inc_indx = range(len(header))[2:]
-i_iter = xrange(len(inc_indx))
-        
+
 if args.t or args.b: 
-    snps = splitAndOpen(args.snp, 1, 'Chr1', 2, [args.t, None][args.t is None],
+    snps = splitAndOpen(args.snp, 1, CHR, 2, [args.t, None][args.t is None],
                         [args.b, None][args.b is None])
 else:
     if not args.s:
@@ -194,12 +192,12 @@ outgroup = []
 positions = []
 nucl = ['A', 'G', 'C', 'T']
 counter = 0
-length = [int(len(snps)/100), len(snps)-1]
-nsnp = len(snps)
+length = [int(len(snps)/100), len(snps)-1, len(snps)]
+i_iter = xrange(len(inc_indx))
 
 if not args.s: 
-    print 'Preparing fasta' + '\n'
-for spos in xrange(nsnp):
+    print 'Preparing fasta:' + '\n'
+for spos in xrange(length[2]):
     
     counter += 1
     snp = list(snps[spos])
