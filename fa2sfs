@@ -1,0 +1,55 @@
+#!/usr/bin/python
+
+from sys import exit, argv
+from re import search
+from argparse import ArgumentParser
+
+p = ArgumentParser(prog='fa2sfs', description='Count polarized site frequency'+\
+                   ' classes from a fasta alignment. Only bi-allelic sites '+\
+                   'with no missing data are included.')
+p.add_argument('-fa', metavar='fasta', help='Path to fasta '+\
+               'alignment',required=True)
+p.add_argument('-anc', metavar='outgroup', help='ID of the outgroup in the'+\
+               ' aligment', required=True)
+p.add_argument('-plot', help='Produce a barplot of the SFS', action='store_true')
+
+if len(argv) == 1:
+    p.print_help()
+    exit(0)
+
+args = p.parse_args()
+
+fasta = open(args.fa).read().split('\n')
+lab = [i.strip('>') for i in fasta if search('>', i)]
+seq = [i for i in fasta if not search('>', i)]
+del fasta
+inseq = [seq[lab.index(i)] for i in lab if i not in [args.anc]]
+outseq = seq[ [lab.index(i) for i in lab if i in [args.anc]][0] ]
+del seq
+nucl = ['A', 'G', 'C', 'T']
+
+sfs = [0 for i in range(len(inseq)+1)]
+
+for i in range(len(inseq[0])):
+    cseq = [j[i] for j in inseq]
+    out = outseq[i]
+    iset = list(set(cseq))
+    oset = list(set(iset.append(out)))
+    if out not in nucl: continue
+    elif len(oset) > 2 or True in [j not in nucl for j in oset]: continue
+
+    sfs[ len(sfs)-cseq.count(out)-1 ] += 1
+
+print ' '.join([str(i) for i in sfs])
+
+if args.plot:
+    from matplotlib import pyplot
+    barp = pyplot.bar(map(lambda x:x+0.5, range(len(sfs)-2)), sfs[1:-1],
+                      width=1, linewidth=1, color='0.70')
+    pyplot.ylim(-0.025 * max(sfs[1:-1]), 1.05 * max(sfs[1:-1]))
+    pyplot.xlim(0, len(sfs)-1)
+    pyplot.suptitle('Site frequency spectrum of ' + args.fa.split('/')[-1], 
+                    fontsize=12, fontweight='bold')
+    pyplot.xlabel('N derived alleles')
+    pyplot.ylabel('Count')
+    pyplot.show()
