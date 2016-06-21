@@ -1,5 +1,7 @@
 #!/usr/bin/python
 
+''' Bjorn Pieper. Cologne, June 2016 '''
+
 from sys import exit, argv
 from re import search
 from argparse import ArgumentParser
@@ -15,7 +17,7 @@ p.add_argument('-plot', help='Produce a barplot of the SFS', action='store_true'
 
 if len(argv) == 1:
     p.print_help()
-    exit(0)
+    exit(0
 
 args = p.parse_args()
 
