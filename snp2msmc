@@ -1,0 +1,93 @@
+#!/usr/bin/python
+
+''' Bjorn Pieper. Cologne, June 2016. '''
+
+from sys import exit, argv 
+from argparse import ArgumentParser
+from re import search
+
+req=True
+if '-n' in argv:
+    req=False
+p = ArgumentParser(prog='snp2msmc', description='Produce MSMC input files '+\
+                   'from the SNP tables')
+p.add_argument('-snp', metavar='<String>', help='Path to the SNP table',
+               required=req)
+p.add_argument('-pos', metavar='<String>', help='Path to a list of positions'+\
+               ' to consider (positions not included in the list will '+\
+               'be ignored). If omitted all sites will be considered', 
+               required=False)
+p.add_argument('-n', help='Produce a list of the strains included in the SNP '+\
+               'table', action='store_true')
+p.add_argument('-c', metavar='<Int>', help='Chromosome number', required=req)
+p.add_argument('-f', help='Exclude sites for which any of the included '+\
+               'strains has an ambiguous base call (including \'N\'. '+\
+               'By default any ambiguous calls will be changed to \'N\'.',
+               action='store_true')
+p.add_argument('-o', metavar='<String>', help='Output file prefix (chromosome'+\
+               ' will be appended', required=req)
+p.add_argument('-a', help='list of strains to include separated with white'+\
+               'space (min. 2), or alternatively the path to a file with '+\
+               'a list of strains to include (one per line)',
+               nargs='+', const=None)
+
+if len(argv) == 1:
+    p.print_help()
+    exit(0)
+
+args = p.parse_args()
+
+def WRITEACC(args_snp):
+  accessions = open(args_snp).readline().split('\t')
+  #with open('accession_names.txt', 'wb') as ACCOUT:
+  #                 ACCOUT.write('\n'.join(accessions[2:]))
+  print ('\n'.join(accessions[2:]))
+
+if args.n:
+    WRITEACC(args.snp)
+    exit(0)
+if args.pos:
+    pos = { int(x):1 for x in open(args.pos).read().split('\n')[:-1] }
+else:
+    pos = { int(search('^\w+\t(\d+)\t', i).group(1)) 
+           for i in open(args.snp).readlines()[1:] }
+nucl = ['A', 'G', 'C', 'T']
+
+def MSMC(args_snp, args_o, pos, args_c, args_f, args_a):
+    with open(args_snp, 'r') as SNP:
+        snp_header=SNP.readline().strip('\n').split('\t')
+        if len(args_a) == 1:
+            args_a = open(args_a[0]).read().split('\n')[:-1]
+            for code in args_a:
+                if code not in snp_header:
+                    print code
+            if False in [i in snp_header for i in args_a]:
+                exit('The above strain code(s) do(es) not occur'+\
+                     ' in the SNP table!')
+        accindx = [snp_header.index(i) for i in args_a]
+        curpos = 1
+        with open(args_o + '.chr' + str(args_c) + '.msmc', 'wb') as OUT:
+            for current in SNP:
+                if int(search('^\w+\t(\d+)\t', current).group(1)) in pos:
+                    splitted = current.strip('\n').split('\t')
+                    if curpos == 1:
+                        difpos = 1
+                    else:
+                        difpos = int(splitted[1]) - curpos
+                    if len(set([splitted[j] for j in accindx])) == 1 or\
+                       (args.f and True in [splitted[j] not in nucl
+                                            for j in accindx]): 
+                        curpos = int(splitted[1])
+                        continue
+                    if not args_f:
+                        for i,j in enumerate([splitted[j] for j in accindx]):
+                            if j not in nucl:
+                                splitted[accindx[i]] = 'N'
+                    output = '\t'.join([str(args.c), splitted[1], str(difpos),\
+                                        ''.join([splitted[j] 
+                                                 for j in accindx])])
+                    OUT.write(output + '\n')
+                    curpos = int(splitted[1])
+    return 0 
+
+MSMC(args.snp, args.o, pos, args.c, args.f, args.a)
