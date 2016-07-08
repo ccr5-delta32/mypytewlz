@@ -64,10 +64,10 @@ else:
     args.fcol = 1; args.scol = 2 
 
 files = [ ( i, [j[args.scol-1] for j in rel if
-            j[args.fcol-1] == i.strip('.sdi.gz')][0] )
-          for i in ls if i.strip('.sdi.gz') in
+            j[args.fcol-1] == i.split('.sdi.gz')[0]][0] )
+          for i in ls if i.split('.sdi.gz')[0] in
           [j[args.fcol-1] for j in rel] ]
-    
+
 ## List of file objects
 handler = [ gzip.open(args.sdi + j[0]) for j in files if search('gz', j[0]) ] +\
           [ open(args.sdi + j[0]) for j in files if not search('gz', j[0]) ]  
