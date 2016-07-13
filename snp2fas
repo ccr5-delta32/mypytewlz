@@ -193,13 +193,14 @@ header = open(args.snp, 'r').readline().strip('\n').split('\t')
 if args.t or args.b: 
     snps = splitAndOpen(args.snp, 1, CHR, 2, [args.t, None][args.t is None],
                         [args.b, None][args.b is None])
-    if args.cov:
-        covs = splitAndOpen(args.cov, 1, CHR, 2, [args.t, None][args.t is None],
-                            [args.b, None][args.b is None])
 else:
     if not args.s:
         print 'Reading ' + args.snp.split('/')[-1]
     snps = [i.split('\t') for i in open(args.snp).read().split('\n')][1:-1]
+
+if args.cov:
+    covs = splitAndOpen(args.cov, 1, CHR, 2, [args.t, None][args.t is None],
+                        [args.b, None][args.b is None])
 
 if args.out: 
     out_indx = header.index(args.out)
