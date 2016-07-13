@@ -10,12 +10,18 @@ from argparse import ArgumentParser
 from math import ceil
 from hashlib import md5
 
+req=False
+if '-fc' in argv or '-FC' in argv: req=True
 p = ArgumentParser(prog='snp2fas', description='Produce FASTA alignments'+\
                    ' for arbitrary regions and sets of accessions')
 p.add_argument('-s', help='Silent. Do not report what is going on.', 
                action='store_true')
 p.add_argument('-snp', metavar='<String>', help='Path to SNP table',
                required=True)
+p.add_argument('-cov', metavar='<String>', help='Path to coverage'+\
+               ' table (Exactly like the SNP table but with read depth'+\
+               ' instead of alleles. This can be used to also filter on '+\
+               'coverage at polymorphic sites in the SNP table', required=req)
 p.add_argument('-t', metavar='<Int>', help='5\' position. Omit to '+\
                'start at 1st SNP.', required=False)
 p.add_argument('-b', metavar='<Int>', help='3\' position. Omit to '+\
@@ -24,13 +30,26 @@ p.add_argument('-o', metavar='<String>', help='Output file name, if '+\
                'omitted the file name will be the SNP table name extended'+\
                ' with \'.fa\'. Take care that this may not be unique in your'+\
                ' path!', required=False)
+p.add_argument('-m', help='Include sites that are monomorphic in the '+\
+               'ingroup.', required=False, action='store_true')
 p.add_argument('-f', help='Convert ambiguous base calls '+\
                'to \'N\'. Default is no filtering.', required=False, 
                action='store_true')
+p.add_argument('-fc', metavar='<Int>', help='Like -f but, additionally, also '+\
+               'convert base calls where the read depth is less than or equal'+\
+               ' to the provided value to \'N\'. Requires -cov to be set.', 
+               required=False)
+p.add_argument('-fn', metavar='<Int>', help='Allow only the provided number '+\
+               'of \'N\'s\', otherwise exclude the position entirely. Setting'+\
+               ' this to 0 will not allow any \'N\' but in that case it is '+\
+               'faster to use -F or -FC', 
+               required=False) 
 p.add_argument('-F', help='Exclude sites with any ambiguous '+\
                'base calls or \'N\'.', required=False, action='store_true') 
-p.add_argument('-m', help='Include sites that are monomorphic in the '+\
-               'ingroup.', required=False, action='store_true')
+p.add_argument('-FC', metavar='<Int>', help='Like -F but, additionally, also '+\
+               'exclude base calls where the read depth is less than or equal'+\
+               ' to the provided value. Requires -cov to be set.',
+               required=False)
 p.add_argument('-i', metavar='<String>', help='Path to list of accessions to '+\
                'include. When -i is given the argument \'makelist\' it will '+\
                'produce a file with the header of the SNP table, which can be'+\
@@ -67,25 +86,46 @@ args = p.parse_args()
 
 if args.out and args.xout:
     exit('Error: Please use only one of -out and -xout')
-if len(args.xout) not in [6, 8]:
-    exit('Error: -xout should be provided with either 6 or 8 arguments')
-
-if not args.s:
-    print(chr(27) + '[2J' + chr(27) + '[;H')
-    print 'Producing fasta alignment from ' + args.snp.split('/')[-1] +\
-           [' using ' + args.xout[0].split('/')[-1] + ' (' + args.xout[5] +\
-           ') as external outgroup.',''][args.xout is None] + '\n'
+    if len(args.xout) not in [6, 8]:
+        exit('Error: -xout should be provided with either 6 or 8 arguments')
 
 with open(args.snp, 'r') as IN:
     header = IN.readline().strip('\n').split('\t')
     CHR = IN.readline().strip('\n').split('\t', 1)[0]
+if args.cov:
+    with open(args.cov, 'r') as IN:
+        covheader = IN.readline().strip('\n').split('\t')
+
+
+if args.i:
+    if args.i == 'makelist':
+        with open(args.snp.split('/')[-1] + '.list', 'w') as OUT:
+            for i in header[2:]: 
+                OUT.write(i + '\n')
+        print 'A list of accessions included in ' +\
+        args.snp.split('/')[-1] + ' has been written to '+\
+        args.snp.split('/')[-1] + '.list'       
+        exit(0)
+    else:
+        inc_indx = [(header.index(i), covheader.index(i)) for i in\
+                    open(args.i).read().split('\n')[:-1]]
+else:
+    inc_indx = [(header.index(i), covheader.index(i)) for i in\
+                 header[2:]]
+
+if not args.s:
+    print(chr(27) + '[2J' + chr(27) + '[;H')
+    print 'Producing fasta alignment from ' + args.snp.split('/')[-1]
+    if args.xout:
+        print 'Using ' + args.xout[0].split('/')[-1] + ' (' + args.xout[5] +\
+                ') as external outgroup.'
 
 def splitAndOpen(file, chrcol=1, Chr=CHR, poscol=2, 
                  args_t = None, args_b = None):
     if not args.s: 
         print 'Splitting ' + file.split('/')[-1] + ' to isolate ' +\
               ['from ' + str([args_t, 'the beginning'][args_t is None]) +\
-              ' to ' + str([args_b, 'the end'][args_t is None]) +\
+              ' to ' + str([args_b, 'the end'][args_b is None]) +\
               ' on chromosome ' + str(Chr), 'chromosome ' + str(Chr)]\
                 [args_t is None and args_b is None]
     cmd = '$%(chrcol)s == \"%(chr)s\" && $%(poscol)s >= ' %\
@@ -139,33 +179,23 @@ def getCommon(snps, xout):
             print snps[current], xout[i]
     return res
 
-def maskAmbiguity(snp, inc_indx):
-    for indx, value in enumerate([snp[i] for i in inc_indx]):
+def maskAmbiguityCoverage(snp, inc_indx, cov=None, covrg=None):
+    for indx, value in enumerate([snp[i[0]] for i in inc_indx]):
         if value not in nucl:
-            snp[indx] = 'N'
+            snp[indx+2] = 'N'
+            continue
+        if cov is not None and int(cov[inc_indx[indx][1]]) <= int(covrg):
+            snp[indx+2] = 'N'
     return snp
             
-with open(args.snp, 'r') as IN:
-    header = IN.readline().strip('\n').split('\t')
-
-if args.i:
-    if args.i == 'makelist':
-        with open(args.snp.split('/')[-1] + '.list', 'w') as OUT:
-            for i in header: 
-                OUT.write(i + '\n')
-        print 'A list of accessions included in ' +\
-        args.snp.split('/')[-1] + ' has been written to '+\
-        args.snp.split('/')[-1] + '.list'       
-        exit(0)
-    else:
-        inc_indx = [header.index(i) for i in\
-                    open(args.i).read().split('\n')[:-1]]
-else:
-    inc_indx = range(len(header))[2:]
+header = open(args.snp, 'r').readline().strip('\n').split('\t')
 
 if args.t or args.b: 
     snps = splitAndOpen(args.snp, 1, CHR, 2, [args.t, None][args.t is None],
                         [args.b, None][args.b is None])
+    if args.cov:
+        covs = splitAndOpen(args.cov, 1, CHR, 2, [args.t, None][args.t is None],
+                            [args.b, None][args.b is None])
 else:
     if not args.s:
         print 'Reading ' + args.snp.split('/')[-1]
@@ -201,8 +231,10 @@ for spos in xrange(length[2]):
     
     counter += 1
     snp = list(snps[spos])
+    if args.cov:
+        cov = list(covs[spos])
 
-    if not args.m and len(set([snp[i] for i in inc_indx])) == 1: continue
+    if not args.m and len(set([snp[i[0]] for i in inc_indx])) == 1: continue
     
     aux = None
     if args.out:
@@ -213,15 +245,25 @@ for spos in xrange(length[2]):
         aux = tmp[args.xout[4]] 
 
     if args.F:
-        if True in [snp[i] not in nucl for i in inc_indx] or\
-            (aux is not None and aux not in nucl): continue
+        if True in [snp[i[0]] not in nucl for i in inc_indx] or\
+           (aux is not None and aux not in nucl): continue
+    if args.FC:
+        if True in [snp[i[0]] not in nucl for i in inc_indx] or\
+            (aux is not None and aux not in nucl) or\
+           True in [int(cov[i[1]]) <= int(args.FC) for i in inc_indx]: continue
     if args.f:
-        snp = maskAmbiguity(snp, inc_indx)
+        snp = maskAmbiguityCoverage(snp, inc_indx)
         if aux is not None and aux not in nucl + ['N']:
             aux = 'N'
+    if args.fc:
+        snp = maskAmbiguityCoverage(snp, inc_indx, cov, args.fc)
+        if aux is not None and aux not in nucl + ['N']:
+            aux = 'N'
+    if args.fn:
+        if snp.count('N') > int(args.fn): continue
 
     positions.append(snp[1])
-    [fasta[i].append(snp[inc_indx[i]]) for i in i_iter]
+    [fasta[i].append(snp[inc_indx[i][0]]) for i in i_iter]
     if args.out or args.xout:
         outgroup.append(aux)
     
@@ -238,7 +280,7 @@ else:
 if len(fasta[0]) == 0:
     exit('No sites passed filtering!')
 
-print 'Writing ' + str(len(fasta[0])) + ' sites to ' + OUT
+print 'Writing ' + str(len(fasta[0])) + ' sites to ' + OUT + '.fa'
 
 with open(OUT + '.pos', 'wb') as output:
     for pos in positions:
@@ -246,7 +288,7 @@ with open(OUT + '.pos', 'wb') as output:
 
 with open(OUT + '.fa', 'wb') as output:
     for i in i_iter:
-        output.write('>' + header[inc_indx[i]] + '\n')
+        output.write('>' + header[inc_indx[i][0]] + '\n')
         output.write(''.join(fasta[i]) + '\n')
     if args.out or args.xout:
         output.write('>' + out_lab + '\n')
