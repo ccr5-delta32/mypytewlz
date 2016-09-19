@@ -5,12 +5,12 @@ from argparse import ArgumentParser
 from re import search
 from sys import argv, exit
 
-req=False
+req=True
 if '-peek' in [i for i in argv]:
     req=False
 p = ArgumentParser(prog='arp2fa', description='This will produce a simple '+\
                   'fasta aligment from the sequences in an arlequin file.'+\
-                  '\nIt assumes the Arlequin sequence is of the form '+\
+                  '\nIf the Arlequin sequence is of the form '+\
                   '\'00020312012\' ..etc. 0123 will be transformed into:\n'+\
                   'A, G, C, T, respectively so the A is the ancestral'+\
                   ' allele.\nIf both -pos and -n are omitted the full '+\
@@ -20,9 +20,10 @@ p = ArgumentParser(prog='arp2fa', description='This will produce a simple '+\
 p.add_argument('-arp', metavar='', help='path to .arp file', required=True)
 p.add_argument('-peek', help='Print the first 100 characters of each line in '+\
                'the arp file', action='store_true', default='store_false')
-p.add_argument('-pos', metavar='', help='path to list of positions',
+p.add_argument('-pos', metavar='', help='path to list of positions. When omit'+\
+               'ted taking positions from the arp file will be attempted',
                required=False)
-p.add_argument('-n',   metavar='', help='max number of SNPs to extract', 
+p.add_argument('-n', metavar='', help='max number of SNPs to extract', 
                required=False)
 p.add_argument('-out', metavar='', help='Output file name', required=req)
 
@@ -40,15 +41,22 @@ if args.peek:
     for i in range(len(ARP)):
         print str(i+1) + '\t' + ARP[i][:100]
     exit(0)
+
+if not args.pos:
+    for i,j[:100] in enumerate(ARP):
+        if search('polymorphic positions', j):
+            pos = ARP[i+1].split('#')[1].split(',')
+            npos = len(pos)
+            print str(npos) + ' positions taken from arp file'
+            break
+
 seq_indx = [ARP.index(i) for i in ARP if search('_', i)]
 
-npos = len(ARP[seq_indx[0]].split('\t')[2])
 if args.pos:
     pos = open(args.pos).read().split('\n')[:-1]
     npos = len(pos)
 if args.n:
     npos = n
-
 
 with open(args.out + '.pop', 'wb') as pop:
    pop.write('simline' + '\t' + 'pop' + '\n')
@@ -56,9 +64,12 @@ with open(args.out + '.pop', 'wb') as pop:
 nucl = ['A', 'G', 'C', 'T']
 
 with open(args.out + '.fa', 'wb') as DNA:
-   for i in seq_indx:
+    for i in seq_indx:
        tmp = ARP[i].split('\t')
        with open(args.out + '.pop', 'ab') as pop:
            pop.write(tmp[0] + '\t' + 'pop'+str(tmp[0][0]) + '\n')
        DNA.write('>' + tmp[0] + '\n')
-       DNA.write(''.join([nucl[int(j)] for j in tmp[2][:npos]]) + '\n')
+       if search('\d', tmp[2]):
+           DNA.write(''.join([nucl[int(j)] for j in tmp[2][:npos]]) + '\n')
+       else:
+           DNA.write(''.join(tmp[2]) + '\n')
