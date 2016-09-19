@@ -1,0 +1,232 @@
+#!/usr/bin/env python2
+# vim: set ft=python:
+
+''' Bjorn Pieper. Cologne, September 2016.
+    This will produce msmc input files from the SNP tables by simply
+    selecting the respective columns. The only filtering is done based
+    on sequencing depth and ambiguity. '''
+
+from sys import exit, argv 
+from argparse import ArgumentParser
+from re import search, IGNORECASE
+from random import sample
+from subprocess import check_output
+from itertools import combinations
+
+req = [True, False]
+if '-ls' in argv or '-snps' in argv:
+    req = [False, True]
+p = ArgumentParser(prog='snp2msmc2', description='Produce MSMC input files '+\
+                   'from the SNP tables')
+p.add_argument('-snp', metavar='<String>', help='Path to the SNP table',
+               required=req[0])
+p.add_argument('-snps', metavar='<String>', help='Path containing the SNP '+\
+               'tables and, separated by whitespace, a common part of the '+\
+               'file names. This is useful in combination with -r to make '+\
+               'MSMC input files of all chromosomes for each random pair of '+\
+               'strains. If \'chr<n>\' or \'c<n>\' occurs in the SNP table '+\
+               'file name this will be used in the output file name. If not '+\
+               'the internal index of the iterator will be used.', nargs='+',
+               required=req[1])
+p.add_argument('-cov', metavar='<String>', help='Path to the coverage matrix',
+               required=req[0])
+p.add_argument('-covs', metavar='<String>', help='Like -snps but for the '+\
+               'coverage matrices', nargs='+', required=req[1])
+p.add_argument('-C', help='Minimum coverage required for at least 2 strains',
+               type=int, required=True)
+p.add_argument('-pos', metavar='<String>', help='Path to a list of positions'+\
+               ' to consider (positions not included in the list will '+\
+               'be ignored). If omitted all sites will be considered', 
+               required=False)
+p.add_argument('-ls', help='Produce a list of the strains included in the SNP'+\
+               ' table', action='store_true')
+p.add_argument('-o', metavar='<String>', help='Output file prefix (chromosome'+\
+               ' will be appended', required=True)
+p.add_argument('-a', help='list of strains to include separated with white'+\
+               'space (min. 2), or alternatively the path to a file with '+\
+               'a list of strains to include one per line with strain code in'+\
+               ' the first column; other columns are ignored',
+               nargs='+', const=None)
+p.add_argument('-b', help='Like -a but when provided MSMC input is made by '+\
+               'taking -n / 2 haplotypes from -a and the same number from -b',
+               nargs='+', const=None)
+p.add_argument('-r', metavar='<Int>', help='Make n random combinations of the'+\
+               ' strains present in the list provided to -a. (default=1)',
+               type=int, default=1) 
+p.add_argument('-n', metavar='<Int>', help='How many haplotypes to comb'+\
+               'ine into the output file (minimum, and default=2. Must be an'+\
+               ' even number when -b is specified)', type=int, default=2)
+
+if len(argv) == 1:
+    p.print_help()
+    exit(0)
+
+args = p.parse_args()
+
+if args.n and args.n < 2: args.n = 2
+
+def writeAcc(args_snp):
+  accessions = open(args_snp).readline().split('\t')
+  print ('\n'.join(accessions[2:]))
+
+if args.ls:
+    writeAcc(args.snp)
+    exit(0)
+if args.snp:
+    pos =  [int(search('^\w+\t(\d+)\t', i).group(1)) 
+           for i in open(args.snp).readlines()[1:]]
+    cheader = open(args.cov).readline().strip('\n').split('\t')
+
+if args.snps:
+    if not args.snps[0][-1] == '/':
+        args.snps[0] = args.snps[0] + '/'
+    if not args.covs[0][-1] == '/':
+        args.covs[0] = args.covs[0] + '/'
+
+def chk(lst):
+    fault = None
+    for code in lst:
+        if code not in snp_header:
+            print code + ' does not occur in the SNP table!'
+            if fault is None: fault = True
+        if code not in cov_header:
+            print code + ' does not occur in the Coverage table!'
+            if fault is None: fault = True
+    if fault:
+        exit(1)
+    else:
+        return 0
+
+if len(args.a) == 1:
+    args.a = [i.split('\t')[0] for i in open(args.a[0]).read().split('\n') if
+              len(i) > 0]
+    args.a = [i for i in args.a if i != 'Ox']
+
+if args.b is not None and len(args.b) == 1:
+    if args.n % 2 != 0:
+        exit('-n needs to be an even number when combining 2 sets of strains')
+    args.b = [i.split('\t')[0] for i in open(args.b[0]).read().split('\n') if
+              len(i) > 0]
+    args.b = [i for i in args.b if i != 'Ox']
+
+nucl = ['A', 'G', 'C', 'T']
+
+def getNext(file, position, indx):
+    current = file.readline()
+    if search('^\w+\t(\d+)\t', current).group(1) == str(position):
+        return [current.split('\t')[i] for i in indx]
+
+def maskAmbCov(snp, cov, cutoff):
+    for i,j in enumerate(snp):
+        if j not in nucl:
+            snp[i] = '?'
+    for i,j in enumerate(cov):
+        if int(j) < cutoff:
+            snp[i] = '?'
+    return snp
+    
+def MSMC(args_snp, args_cov, args_C, args_o, pos, args_c, select):
+  with open(args_snp, 'r') as SNP:
+    SNP.readline()
+    with open(args_cov, 'r') as COV:
+      COV.readline()
+      sindx = [snp_header.index(i) for i in select]
+      cindx = [cov_header.index(i) for i in select]
+      curpos = 1
+      with open(args_o + '.chr'+str(args_c) + '.msmc', 'wb') as OUT:
+        for site in pos:
+          cov = COV.readline().strip('\n').split('\t')
+          snp = SNP.readline().strip('\n').split('\t')
+          if not cov[1] == snp[1]:
+              exit('Something is wrong with the aligment of the tables')
+          mchk = [ '?' if i not in nucl else i for i in snp[2:] ]
+          if len(set(mchk)) == 2 and '?' in mchk:
+              continue
+          coverage = [cov[i] for i in cindx]
+          snip = [snp[i] for i in sindx]
+          if sum([i >= args_C for i in coverage]) < 2:
+            curpos = site
+            continue
+          snips = maskAmbCov(snip, coverage, args_C)
+          if sum([i in nucl for i in snips]) < 2:
+            curpos = site
+            continue
+          if curpos == 1: 
+            difpos = 1
+          else:
+            difpos = site - curpos
+          output = '\t'.join([args_c, str(site), str(difpos), ''.join(snips)])
+          OUT.write(output + '\n')
+          curpos = site
+  return 0 
+
+def allUniqueCombinations(args_a, args_b, args_n):
+    if args_b is None:
+        resset = tuple(set(tuple(sorted([tuple(sorted(i)) for i in 
+                                        combinations(args_a, args_n) if
+                                        len(set(i)) == args_n]))))
+    else:
+        set_b = allUniqueCombinations(args_b, None, args_n/2)
+        set_a = allUniqueCombinations(args_a, None, args_n/2)
+        resset = tuple([set_a[i] + set_b[j] for i in range(len(set_a)) for j in
+                       range(len(set_b))])
+    return resset
+
+if args.C is None:
+    exit('args.C is None')
+
+def cnt(path, files):
+    itr = xrange(len(files))
+    res = [None for i in itr]
+    for i in itr:
+        with open(path + files[i], 'r') as I:
+            res[i] = len(I.read().split('\n'))
+    return res
+
+if args.snps:
+    lss = [i for i in check_output(['ls', args.snps[0]]).split('\n') if
+                                    search(args.snps[1], i)]
+    lsc = [i for i in check_output(['ls', args.covs[0]]).split('\n') if
+                                    search(args.covs[1], i)]
+    if not args.snps[0][-1] == '/':
+        args.snps[0] = args.snps[0] + '/'
+    with open(args.snps[0] + lss[0], 'r') as SNP:
+        snp_header=SNP.readline().strip('\n').split('\t')
+    with open(args.covs[0] + lsc[0], 'r') as COV:
+        cov_header=COV.readline().strip('\n').split('\t')
+    chk(args.a)
+    chk(args.b)
+    slen = cnt(args.snps[0], lss)
+    clen = cnt(args.snps[0], lsc) 
+    if True in [i not in clen for i in slen]:
+        exit('SNP tables and coverage matrices do not line up') 
+    if True in [slen[i] != clen[i] for i in range(len(slen))]:
+        exit('ordering of SNP table names and coverage matrices bad')
+    unicom = allUniqueCombinations(args.a, args.b, args.n)
+    if len(unicom) < int(args.r):
+        print 'maximum number of unique combinations is: ' + str(len(unicom))
+        smpl = unicom
+    else:
+        smpl = [unicom[i] for i in 
+                sample(range(len(unicom)), int(args.r))]
+    for sset in smpl:
+        print sset 
+        for j in range(len(lss)):
+            pos = [int(search('^\w+\t(\d+)\t', i).group(1)) 
+                   for i in open(args.snps[0] + lss[j]).readlines()[1:]]
+            if search('chr\d', lss[j], IGNORECASE):
+                c = search('chr(\d)', lss[j], IGNORECASE).group(1)
+            elif search('c\d', lss[j], IGNORECASE):
+                c = search('c(\d)', lss[j], IGNORECASE).group(1)
+            else:
+                c = 'itr' + str(j)
+            print 'Chromosome ' + c
+            prefix = args.o + '_' + '_'.join([i for i in sset])
+            print '------------------------------------------------------'
+            MSMC(args.snps[0] + lss[j], args.covs[0] + 
+                 lsc[j], args.C, prefix, pos, c, sset)
+else:
+    for i in range(args.r):
+        comb = sample(args.a, args.n)
+        prefix = args.o + '_' + '_'.join([i for i in comb]) 
+        MSMC(args.snp, args.cov, args.C, prefix, pos, args.c, comb)
