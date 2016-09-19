@@ -50,6 +50,8 @@ p.add_argument('-FC', metavar='<Int>', help='Like -F but, additionally, also '+\
                'exclude base calls where the read depth is less than or equal'+\
                ' to the provided value. Requires -cov to be set.',
                required=False)
+p.add_argument('-os', help='Output also a new SNP table with the chosen fil'+\
+               'tering applied', required=False, action='store_true')
 p.add_argument('-i', metavar='<String>', help='Path to list of accessions to '+\
                'include. When -i is given the argument \'makelist\' it will '+\
                'produce a file with the header of the SNP table, which can be'+\
@@ -95,7 +97,8 @@ with open(args.snp, 'r') as IN:
 if args.cov:
     with open(args.cov, 'r') as IN:
         covheader = IN.readline().strip('\n').split('\t')
-
+else:
+    covheader = header
 
 if args.i:
     if args.i == 'makelist':
@@ -219,6 +222,7 @@ elif args.xout:
         cutoff = int(args.xout[7])
 
 fasta = [[] for i in inc_indx]
+newsnp = []
 outgroup = []
 positions = []
 nucl = ['A', 'G', 'C', 'T']
@@ -260,18 +264,21 @@ for spos in xrange(length[2]):
         snp = maskAmbiguityCoverage(snp, inc_indx, cov, args.fc)
         if aux is not None and aux not in nucl + ['N']:
             aux = 'N'
-    if args.fn:
-        if snp.count('N') > int(args.fn): continue
+    if args.fn and snp.count('N') > int(args.fn): continue
 
     positions.append(snp[1])
     [fasta[i].append(snp[inc_indx[i][0]]) for i in i_iter]
     if args.out or args.xout:
         outgroup.append(aux)
+    if args.os:
+        newsnp.append(snp)
     
     if counter % [length[0], length[1]][length[1] < 100] == 0:
         stdout.write("\033[F\033[K")
         print 'position ' + snp[1] + ': ' +\
-               str(int(min(ceil(counter / length[0]), 100))) + '%'
+               str(int(min(ceil(counter / 
+                                [length[0], length[1]][length[1] < 100]),
+                           100))) + '%'
 
 if not args.o:
     OUT = args.snp.split('/')[-1]  
@@ -294,3 +301,11 @@ with open(OUT + '.fa', 'wb') as output:
     if args.out or args.xout:
         output.write('>' + out_lab + '\n')
         output.write(''.join(outgroup))
+
+if args.os:
+    print 'Writing filtered snps to new SNP table \'' + OUT +'.snp\''
+    with open(OUT + '.snp', 'wb') as output:
+        output.write('\t'.join(header) + '\n')
+        for locus in newsnp:
+            output.write('\t'.join(locus) + '\n')
+
