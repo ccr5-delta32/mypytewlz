@@ -1,35 +1,49 @@
-#!/usr/bin/python
+#!/usr/bin/env python2
+# vim: set ft=python:
 
-''' Bjorn Pieper. Cologne, June 2016. '''
+''' Bjorn Pieper. Cologne, June 2016... August 2016. '''
 
 from sys import exit, argv 
 from argparse import ArgumentParser
-from re import search
+from re import search, IGNORECASE
+from random import sample
+from subprocess import check_output
 
-req=True
-if '-n' in argv:
-    req=False
+req=[True, False]
+if '-n' in argv or '-snps' in argv:
+    req=[False, True]
 p = ArgumentParser(prog='snp2msmc', description='Produce MSMC input files '+\
                    'from the SNP tables')
 p.add_argument('-snp', metavar='<String>', help='Path to the SNP table',
-               required=req)
+               required=req[0])
+p.add_argument('-snps', metavar='<String>', help='Path containing the SNP '+\
+               'tables and, separated by whitespace, a common part of the '+\
+               'file names. This is useful in combination with -r to make '+\
+               'MSMC input files of all chromosomes for each random pair of '+\
+               'strains. If \'chr<n>\' or \'c<n>\' occurs in the SNP table '+\
+               'file name this will be used in the output file name. If not '+\
+               'the internal index of the iterator will be used.', nargs='+',
+               required=req[1])
 p.add_argument('-pos', metavar='<String>', help='Path to a list of positions'+\
                ' to consider (positions not included in the list will '+\
                'be ignored). If omitted all sites will be considered', 
                required=False)
 p.add_argument('-n', help='Produce a list of the strains included in the SNP '+\
                'table', action='store_true')
-p.add_argument('-c', metavar='<Int>', help='Chromosome number', required=req)
+p.add_argument('-c', metavar='<Int>', help='Chromosome number', required=req[0])
 p.add_argument('-f', help='Exclude sites for which any of the included '+\
                'strains has an ambiguous base call (including \'N\'. '+\
                'By default any ambiguous calls will be changed to \'N\'.',
                action='store_true')
 p.add_argument('-o', metavar='<String>', help='Output file prefix (chromosome'+\
-               ' will be appended', required=req)
+               ' will be appended', required=True)
 p.add_argument('-a', help='list of strains to include separated with white'+\
                'space (min. 2), or alternatively the path to a file with '+\
-               'a list of strains to include (one per line)',
+               'a list of strains to include one per line with strain code in'+\
+               ' the first column; other columns are ignored',
                nargs='+', const=None)
+p.add_argument('-r', metavar='<Int>', help='Make n random pairs of the '+\
+               ' strain present in the list provided to -a.') 
 
 if len(argv) == 1:
     p.print_help()
@@ -48,9 +62,14 @@ if args.n:
     exit(0)
 if args.pos:
     pos = { int(x):1 for x in open(args.pos).read().split('\n')[:-1] }
-else:
+elif args.snp:
     pos = { int(search('^\w+\t(\d+)\t', i).group(1)) 
            for i in open(args.snp).readlines()[1:] }
+
+if len(args.a) == 1:
+    args.a = [i.split('\t')[0] for i in open(args.a[0]).read().split('\n') if
+              len(i) > 0]
+
 nucl = ['A', 'G', 'C', 'T']
 
 def MSMC(args_snp, args_o, pos, args_c, args_f, args_a):
@@ -58,12 +77,13 @@ def MSMC(args_snp, args_o, pos, args_c, args_f, args_a):
         snp_header=SNP.readline().strip('\n').split('\t')
         if len(args_a) == 1:
             args_a = open(args_a[0]).read().split('\n')[:-1]
-            for code in args_a:
-                if code not in snp_header:
-                    print code
-            if False in [i in snp_header for i in args_a]:
-                exit('The above strain code(s) do(es) not occur'+\
-                     ' in the SNP table!')
+        for code in args_a:
+            if code not in snp_header:
+                print code
+        if False in [i in snp_header for i in args_a]:
+            print 'The above strain code(s) do(es) not occur'+\
+                  ' in the SNP table!'
+            return 1
         accindx = [snp_header.index(i) for i in args_a]
         curpos = 1
         with open(args_o + '.chr' + str(args_c) + '.msmc', 'wb') as OUT:
@@ -83,11 +103,54 @@ def MSMC(args_snp, args_o, pos, args_c, args_f, args_a):
                         for i,j in enumerate([splitted[j] for j in accindx]):
                             if j not in nucl:
                                 splitted[accindx[i]] = 'N'
-                    output = '\t'.join([str(args.c), splitted[1], str(difpos),\
+                    output = '\t'.join([str(args_c), splitted[1], str(difpos),\
                                         ''.join([splitted[j] 
                                                  for j in accindx])])
                     OUT.write(output + '\n')
                     curpos = int(splitted[1])
     return 0 
 
-MSMC(args.snp, args.o, pos, args.c, args.f, args.a)
+def allUniquePairs(args_a):
+    def unroll(x):
+        y = x[0]
+        for i in range(1,len(x)):
+            y = y + x[i]
+        return y 
+    return unroll([ [ (args_a[i], args_a[j]) for j in range(i+1, len(args_a)) ]
+                    for i in range(len(args_a)-1) ])
+
+if args.r:
+    if args.snps:
+        ls = [i for i in check_output(['ls', args.snps[0]]).split('\n') if
+                                       search(args.snps[1], i)]
+        if not args.snps[0][-1] == '/':
+            args.snps[0] = args.snps[0] + '/'
+        unipairs = allUniquePairs(args.a)
+        if len(unipairs) < int(args.r):
+            print 'maximum number of unique pairs is: ' + str(len(unipairs))
+            smpl = unipairs
+        else:
+            smpl = [unipairs[i] for i in 
+                    sample(range(len(unipairs)), int(args.r))]
+        for pair in smpl:
+            print pair
+            for j in range(len(ls)):
+                pos = { int(search('^\w+\t(\d+)\t', i).group(1)) 
+                        for i in open(args.snps[0] + ls[j]).readlines()[1:] }
+                if search('chr\d', ls[j], IGNORECASE):
+                    c = search('chr(\d)', ls[j], IGNORECASE).group(1)
+                elif search('c\d', ls[j], IGNORECASE):
+                    c = search('c(\d)', ls[j], IGNORECASE).group(1)
+                else:
+                    c = '.itr' + str(j)
+                print 'Chromosome ' + c
+                prefix = args.o + '_' + pair[0] + '_' + pair[1]
+                print '------------------------------------------------------'
+                MSMC(args.snps[0] + ls[j], prefix, pos, c, args.f, pair)
+    else:
+        for i in range(len(args.r)):
+            pair = sample(args.a, 2)
+            prefix = args.o + '_' + pair[0] + '_' + pair[1]
+            MSMC(args.snp, prefix, pos, args.c, args.f, pair)
+else:
+    MSMC(args.snp, args.o, pos, args.c, args.f, args.a)

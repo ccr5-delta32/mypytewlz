@@ -23,7 +23,7 @@ p.add_argument('-snp', metavar='<String>', help='Path to the SNP table',
 p.add_argument('-snps', metavar='<String>', help='Path containing the SNP '+\
                'tables and, separated by whitespace, a common part of the '+\
                'file names. This is useful in combination with -r to make '+\
-               'MSMC input files of all chromosomes for each random pair of '+\
+               'MSMC input files of all chromosomes for each random set of '+\
                'strains. If \'chr<n>\' or \'c<n>\' occurs in the SNP table '+\
                'file name this will be used in the output file name. If not '+\
                'the internal index of the iterator will be used.', nargs='+',
