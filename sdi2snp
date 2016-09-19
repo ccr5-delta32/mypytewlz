@@ -18,7 +18,7 @@ p.add_argument('-sdi', metavar='<String>', help='Path containing the sdi files',
 p.add_argument('-l', metavar='<String>', help='list of files to process and'+\
                ' that relates file names to strain names. Use -fcol and'+\
                ' -scol to indicate the respective column numbers in the'+\
-               ' list (defaults to columns 1 and 2).i\n'+\
+               ' list (defaults to columns 1 and 2).\n'+\
                ' The file extensions (.sdi or .sdi.gz) are not required to '+\
                ' be included in the file names column.\nWhen -l is omitted'+\
                ' the file names themselves minus extensions will be used as'+\
@@ -60,12 +60,12 @@ ls = [i for i in check_output(['ls', args.sdi]).split('\n') if search('sdi', i)]
 if args.l:
     rel = [ i.split(args.ld) for i in open(args.l).read().split('\n')[:-1] ]
 else:
-    rel = [ [i, i] for i in [ j.strip('.sdi.gz') for j in ls] ]
+    rel = [ [i, i] for i in [ j.split('.')[0] for j in ls] ]
     args.fcol = 1; args.scol = 2 
 
 files = [ ( i, [j[args.scol-1] for j in rel if
-            j[args.fcol-1] == i.split('.sdi.gz')[0]][0] )
-          for i in ls if i.split('.sdi.gz')[0] in
+            j[args.fcol-1] == i.split('.')[0]][0] )
+          for i in ls if i.split('.')[0] in
           [j[args.fcol-1] for j in rel] ]
 
 ## List of file objects
