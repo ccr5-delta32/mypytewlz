@@ -11,21 +11,35 @@ p = ArgumentParser(prog='fa2sfs', description='Count polarized site frequency'+\
                    'with no missing data are included.')
 p.add_argument('-fa', metavar='fasta', help='Path to fasta '+\
                'alignment',required=True)
+p.add_argument('-i', metavar='<String>', help='Path to list of strains to '+\
+               'form SFS from (simply one column of strin codes). If omitted '+\
+               'the SFS will be counted for all strains in the aligment')
 p.add_argument('-anc', metavar='outgroup', help='ID of the outgroup in the'+\
                ' aligment', required=True)
-p.add_argument('-plot', help='Produce a barplot of the SFS', action='store_true')
+p.add_argument('-plot', help='Produce an interactive barplot of the SFS',
+               action='store_true')
+p.add_argument('-pdf', metavar='<String>', help='Save a plot to pdf, provide '+\
+               'the path + filename as an argument')
 
 if len(argv) == 1:
     p.print_help()
-    exit(0
+    exit(0)
 
 args = p.parse_args()
 
+if args.pdf and not args.pdf[-4:] == '.pdf':
+    args.pdf = args.pdf + '.pdf'
+
 fasta = open(args.fa).read().split('\n')
 lab = [i.strip('>') for i in fasta if search('>', i)]
+if args.i:
+    inc = open(args.i).readlines()
+else:
+    inc = lab
 seq = [i for i in fasta if not search('>', i)]
 del fasta
-inseq = [seq[lab.index(i)] for i in lab if i not in [args.anc]]
+inseq = [seq[lab.index(i)] for i in lab if i not in [args.anc] and\
+        i in inc]
 outseq = seq[ [lab.index(i) for i in lab if i in [args.anc]][0] ]
 del seq
 nucl = ['A', 'G', 'C', 'T']
@@ -33,18 +47,18 @@ nucl = ['A', 'G', 'C', 'T']
 sfs = [0 for i in range(len(inseq)+1)]
 
 for i in range(len(inseq[0])):
+    if outseq[i] not in nucl: continue
     cseq = [j[i] for j in inseq]
     out = outseq[i]
     iset = list(set(cseq))
-    oset = list(set(iset.append(out)))
-    if out not in nucl: continue
-    elif len(oset) > 2 or True in [j not in nucl for j in oset]: continue
+    oset = list(set(iset + [out]))
+    if len(oset) > 2 or True in [j not in nucl for j in oset]: continue
 
     sfs[ len(sfs)-cseq.count(out)-1 ] += 1
 
 print ' '.join([str(i) for i in sfs])
 
-if args.plot:
+if args.pdf or args.plot:
     from matplotlib import pyplot
     barp = pyplot.bar(map(lambda x:x+0.5, range(len(sfs)-2)), sfs[1:-1],
                       width=1, linewidth=1, color='0.70')
@@ -54,4 +68,10 @@ if args.plot:
                     fontsize=12, fontweight='bold')
     pyplot.xlabel('N derived alleles')
     pyplot.ylabel('Count')
-    pyplot.show()
+    if args.pdf:
+        from matplotlib.backends.backend_pdf import PdfPages
+        pdf = PdfPages(args.pdf)
+        pdf.savefig()
+        pdf.close()
+    if args.plot:
+        pyplot.show()
