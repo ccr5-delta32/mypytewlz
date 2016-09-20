@@ -1,0 +1,157 @@
+#!/usr/bin/env python2
+# vim: set ft=python:
+''' Bjorn Pieper, September 2016.
+    Calculate summary statistics from joint site frequency spectra output by
+    FastSimcoal simulations. '''
+
+from sys import path
+path.append('/biodata/dep_tsiantis/common/software/dadi/dadi-1.6.3/')
+import dadi
+from os import path
+from itertools import combinations
+from subprocess import call
+from argparse import ArgumentParser
+from sys import argv, exit
+
+p = ArgumentParser(prog='jsfs2summ', description='Calculate summary statis'+\
+                   'tics from joint site frequency spectra output by FastS'+\
+                   'imcoal simulations.')
+p.add_argument('-p', metavar='<String>', help='Path to the simulations.'+\
+               'Provide everything except the replicate number incorporate'+\
+               'd in the path (eg /././...dadi_maxL_1, but without the numb'+\
+               'er 1)', required=True)
+p.add_argument('-n', metavar='<Int>', help='Number of simulations that were'+\
+               ' done', required=True, type=int)
+p.add_argument('-t', metavar='<String>', help='Currently only \'jointDAF\''+\
+               ' is supported, and is also the default', default='jointDAF',
+               required=False)
+p.add_argument('-s', help='Sample sizes of simulated pop1...popn separated'+\
+               ' with white space (default = 17 16 22 42 for now)', nargs='+',
+               required=False, default=[17, 16, 22, 42])
+
+if len(argv) == 1:
+    p.print_help()
+    exit(0)
+
+args = p.parse_args()
+
+# this directory will hold the multi-SFS made from joint SFS
+if path.exists('sfs'):
+    call(['rm', '-r', 'sfs'])
+call(['mkdir', 'sfs'])
+
+samples = ['Az1', 'Az2', 'azglb', 'glb']
+sample_sizes = [int(i) for i in args.s]
+sample_sizes1 = [i+1 for i in sample_sizes]
+chrlen = 22860106 # for Pi with empirical multiSFS
+
+sf = args.p.split('/')[-1] + args.t + 'pop'
+
+# unique pairwise combinations of pop [0,1,2,3] used to open sims and
+# write results accordingly
+enum = sorted([sorted(j, reverse=True) for j in
+                combinations(range(len(samples)), 2)])
+
+# to store the results
+fact = []
+TajD = [[] for i in range(len(samples))]
+Pi = [[] for i in range(len(samples))]
+Fst = [[] for i in range(len(enum))]
+
+popsfs = [open('sfs/' + sample + '.sfs', 'wb') for sample in samples]
+
+# Process each simulation
+for sim in range(1, args.n+1):
+    # appchk is to decide against calculating stats again because most pops
+    # occur in more than one pair
+    appchk = [False for i in range(len(samples))]
+    fact.append('sim' + str(sim))
+
+    # for each unique pairwise combination of [0,1,2,3]
+    for jsfs in enum:
+        # open joint SFS
+        file = args.p + str(sim) + '/' + sf +\
+        '_'.join([str(i) for i in jsfs]) + '.obs'
+        sfs = [i.split('\t')[1:] for i in open(file).read().split('\n')[2:-1]]
+        # make single SFS from joint SFS for Taj.D and Pi by summing over rows
+        # and columns
+        sfs0 = [sum([int(sfs[j][i]) for i in range(len(sfs[1]))]) for j in
+                range(len(sfs))]
+        sfs1 = [sum([int(sfs[i][j]) for i in range(len(sfs))]) for j in
+                range(len(sfs[1]))]
+        nsites = [sum(sfs0), sum(sfs1)] # for Pi
+        fs0 = dadi.Spectrum(sfs0)
+        fs1 = dadi.Spectrum(sfs1)
+        # interleave jSFS into multi-SFS format for Fst using a zipping trick
+        msfs = [i for j in zip(*sfs[1:]) for i in j]
+        # write multi-SFS
+        msfs_name = 'sim' + str(sim) +'_MSFS_pop' +\
+                    '_'.join([str(i) for i in jsfs]) + '.obs'
+        with open('sfs/' + msfs_name, 'wb') as out:
+            out.write('{}\t{}\t{}\tunfolded\n'.\
+                      format(2, sample_sizes1[jsfs[1]], sample_sizes1[jsfs[0]]))
+            out.write(' '.join(msfs) + '\n')
+            # Write mask
+            out.write(' '.join(['1']+['0' for i in msfs][1:-1]+['1']) + '\n')
+        
+        if not appchk[jsfs[0]]: # only if this pop has not been done yet
+            TajD[jsfs[0]].append( fs0.Tajima_D() )
+            Pi[jsfs[0]].append( fs0.pi() / nsites[0] )
+            popsfs[jsfs[0]].write(' '.join([str(i) for i in sfs0]) + '\n')
+            appchk[jsfs[0]] = True
+        if not appchk[jsfs[1]]: # only if that pop has not been done yet
+            TajD[jsfs[1]].append( fs1.Tajima_D() )
+            Pi[jsfs[1]].append( fs1.pi() / nsites[1] )
+            popsfs[jsfs[1]].write(' '.join([str(i) for i in sfs1]) + '\n')
+            appchk[jsfs[1]] = True
+        # open multiSFS for Fst and calculate
+        fs = dadi.Spectrum.fromfile( 'sfs/' + msfs_name )
+        Fst[enum.index(jsfs)].append( fs.Fst() )
+
+# import empirical multiSFS and calculate statistics
+# this is the multiSFS used for FastSimcoal with the first line removed
+# and the sample sizes increased by 1
+efs = dadi.Spectrum.fromfile('ch108_noamb_nomiss_chr4_all.'+\
+                             'NOHYBRID.FA.dadi_DSFS')
+az1 = efs.marginalize([2,3,4])[0]
+az2 = efs.marginalize([1,3,4])[0]
+azglb = efs.marginalize([1,2,4])[0]
+glb = efs.marginalize([1,2,3])[0]
+
+az1_az2 = efs.marginalize([3,4])[0]
+az1_azglb = efs.marginalize([2,4])[0]
+az1_glb = efs.marginalize([2,3])[0]
+az2_azglb = efs.marginalize([1,4])[0]
+az2_glb = efs.marginalize([1,3])[0]
+azglb_glb = efs.marginalize([1,2])[0]
+
+fact.append('empirical_mSFS')
+TajD[0].append( az1.Tajima_D() )
+TajD[1].append( az2.Tajima_D() )
+TajD[2].append( azglb.Tajima_D() )
+TajD[3].append( glb.Tajima_D() )
+Pi[0].append( az1.pi() / chrlen )
+Pi[1].append( az2.pi() / chrlen )
+Pi[2].append( azglb.pi() / chrlen )
+Pi[3].append( glb.pi() / chrlen )
+Fst[0].append( az1_az2.Fst() )
+Fst[1].append( az1_azglb.Fst() )
+Fst[2].append( az2_azglb.Fst() )
+Fst[3].append( az1_glb.Fst() )
+Fst[4].append( az2_glb.Fst() )
+Fst[5].append( azglb_glb.Fst() )
+
+# write results to a table for plotting in R (see plotsims.R)
+with open('sim.tajima.d.tbl', 'wb') as tajd:
+    tajd.write('\t'.join(['fact'] + samples) +'\n')
+    for i in range(len(TajD[0])):
+        tajd.write('\t'.join([fact[i]]+[str(j[i]) for j in TajD]) + '\n')
+with open('sim.pi.tbl', 'wb') as pi:
+    pi.write('\t'.join(['fact'] + samples) +'\n')
+    for i in range(len(Pi[0])):
+        pi.write('\t'.join([fact[i]]+[str(j[i]) for j in Pi]) + '\n')
+with open('sim.fst.tbl', 'wb') as fst:
+    fst.write('\t'.join(['fact'] + ['_'.join([samples[i[1]], samples[i[0]]]) 
+                                    for i in enum]) + '\n')
+    for i in range(len(Fst[0])):
+        fst.write('\t'.join([fact[i]]+[str(j[i]) for j in Fst]) + '\n')
