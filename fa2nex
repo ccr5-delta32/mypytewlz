@@ -1,0 +1,45 @@
+#!/usr/bin/env python2
+
+from argparse import ArgumentParser
+from sys import exit, argv
+from re import search
+import io
+
+p = ArgumentParser(prog='fa2nex', description='Make a NEXUS format file out'+\
+                   ' of a fasta alignment')
+p.add_argument('-fa', metavar='<String>', help='Path to fasta aligment',
+               required=True)
+p.add_argument('-lb', metavar='<String>', help='Line-break to use \'unix\' '+\
+               '(default, used when omitted entirely), or \'dos\'',
+               default='unix')
+
+if len(argv) == 1:
+    p.print_help()
+    exit(0)
+
+args = p.parse_args()
+
+fas = open(args.fa).readlines()
+lab = [i.strip('>').strip('\n') for i in fas if search('>', i)] 
+seq = [i.strip('\n') for i in fas if not search('>', i)] 
+
+ntax = len(lab)
+nchar = len(seq[0])
+
+with io.open('.'.join(args.fa.split('.')[:-1]) + '.nex', 'w', 
+            newline = ['\r\n', '\n'][args.lb == 'unix']) as output:
+
+    output.write(u'#NEXUS' + '\n')
+    output.write(u'Begin data;' + '\n')
+    output.write(u'\tDimensions ntax=' + str(ntax) + ' nchar=' + str(nchar) +';' +\
+                 '\n')
+    output.write(u'\tFormat datatype=nucleotide gap=- missing=N;' + '\n')
+    output.write(u'Matrix' + '\n')
+    for i in range(len(lab)):
+        output.write(u'                '.join([lab[i], seq[i]]) + '\n')
+    output.write(u';' + '\n')
+    output.write(u'End;' + '\n') 
+
+
+
+
