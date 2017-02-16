@@ -1,0 +1,107 @@
+#!/usr/bin/env python2
+# vim: set ft=python:
+''' Bjorn Pieper, September 2016.
+    Calculate summary statistics from site frequency spectra for a single
+    population output by FastSimcoal simulations. '''
+
+from sys import path
+path.append('/biodata/dep_tsiantis/common/software/dadi/dadi-1.6.3/')
+import dadi
+from os import path
+from itertools import combinations
+from subprocess import call
+from argparse import ArgumentParser
+from sys import argv, exit
+
+p = ArgumentParser(prog='jsfs2summ', description='Calculate summary statis'+\
+                   'tics from joint site frequency spectra output by FastS'+\
+                   'imcoal simulations.')
+p.add_argument('-p', metavar='<String>', help='Path to the simulations.'+\
+               'Provide everything except the replicate number incorporate'+\
+               'd in the path (eg /././...dadi_maxL_1, but without the numb'+\
+               'er 1)', required=True)
+p.add_argument('-P', metavar='<Vector>', help='Enumerators of the sampled '+\
+               'populations separated with whitespace (EG. 0 1 2 for 3 samp'+\
+               'led populations or 1 2 3 when the first of 4 populations is'+\
+               ' not sampled)', nargs='+')
+p.add_argument('-n', metavar='<Int>', help='Number of simulations that were'+\
+               ' done', required=True, type=int)
+p.add_argument('-e', metavar='<String>', help='Path to empirical SFS',
+               required=True)
+p.add_argument('-t', metavar='<String>', help='Currently only \'DAF\''+\
+               ' is supported, and is also the default', default='DAF',
+               required=False)
+p.add_argument('-s', help='Sample size of simulated pop'+\
+               ' with white space (default = 15 for now)', nargs='+',
+               required=False, default=[15])
+p.add_argument('-S', help='Sample name', nargs='+', required=False,
+               default=['flores'])
+p.add_argument('-o', metavar='<String>', help='Output prefix', default='')
+
+if len(argv) == 1:
+    p.print_help()
+    exit(0)
+
+args = p.parse_args()
+
+# this directory will hold the multi-SFS made from joint SFS
+if path.exists(['sfs', 'sfs_' + args.o][len(args.o) > 0]):
+    call(['rm', '-r', ['sfs', 'sfs_' + args.o][len(args.o) > 0]])
+call(['mkdir', ['sfs', 'sfs_' + args.o][len(args.o) > 0]])
+
+samples = [ i for i in args.S]
+sample_sizes = [int(i) for i in args.s]
+sample_sizes1 = [i+1 for i in sample_sizes]
+chrlen = 21992957 # for Pi with empirical multiSFS
+
+sf = args.p.split('/')[-1] + args.t + 'pop'
+
+if args.P:
+    enum = [[int(i) for i in args.P]]
+else:
+    enum = [[0]]
+
+# to store the results
+fact = []
+TajD = [[] for i in range(len(samples))]
+Pi = [[] for i in range(len(samples))]
+
+popsfs = [open(['sfs/', 'sfs_' + args.o +'/'][len(args.o) > 0] + sample, 'wb')
+          for sample in samples]
+
+# Process each simulation
+for sim in range(1, args.n+1):
+    fact.append('sim' + str(sim))
+
+    for jsfs in enum:
+        # open SFS
+        file = args.p + str(sim) + '/' + sf +\
+        '_'.join([str(i) for i in jsfs]) + '.obs'
+        sfs = [i.split('\t')[1:-1] for i in open(file).read().split('\n')[2:-1]]
+        nsites = sum([int(i) for i in sfs[0]]) # for Pi
+        fs0 = dadi.Spectrum(sfs[0])
+        
+        jsfs = [0]
+        TajD[jsfs[0]].append( fs0.Tajima_D() )
+        Pi[jsfs[0]].append( fs0.pi() / chrlen) #nsites )
+        popsfs[jsfs[0]].write(' '.join([str(i) for i in sfs[0]]) + '\n')
+
+# import empirical SFS and calculate statistics
+# this is the SFS used for FastSimcoal with the first line removed
+# and the sample sizes increased by 1
+efs = dadi.Spectrum.fromfile(args.e)
+
+fact.append('empirical_mSFS')
+TajD[jsfs[0]].append( efs.Tajima_D() )
+Pi[jsfs[0]].append( efs.pi() / chrlen )
+
+# write results to a table for plotting in R (see plotsims.R)
+with open(['sim.tajima.d.tbl', args.o + '.sim.tajima.d.tbl'][len(args.o) > 0], 
+          'wb') as tajd:
+    tajd.write('\t'.join(['fact'] + samples) +'\n')
+    for i in range(len(TajD[0])):
+        tajd.write('\t'.join([fact[i]]+[str(j[i]) for j in TajD]) + '\n')
+with open(['sim.pi.tbl', args.o + '.sim.pi.tbl'][len(args.o) > 0],  'wb') as pi:
+    pi.write('\t'.join(['fact'] + samples) +'\n')
+    for i in range(len(Pi[0])):
+        pi.write('\t'.join([fact[i]]+[str(j[i]) for j in Pi]) + '\n')
