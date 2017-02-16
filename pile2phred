@@ -1,0 +1,83 @@
+#!/usr/bin/env python2
+# vim: set ft=python
+
+from argparse import ArgumentParser
+from sys import exit, argv
+from re import search
+from numpy import mean, median
+from math import isnan
+
+p = ArgumentParser(prog='pile2Q', description='Produce Phred quality for a '+\
+                   'given list of positions on a chromosome.')
+p.add_argument('-p', metavar='<String>', help='Path to a list of positions',
+               required=True)
+p.add_argument('-m', metavar='<String>', help='Path to mpileup', required=True)
+p.add_argument('-c', metavar='<String>', help='Chromosome as it occurs in '+\
+               'the mpileup', required=True)
+p.add_argument('-o', metavar='<String>', help='Output filename')
+p.add_argument('-mode', help='Output the mode of the Phred scores (slow!), '+\
+               'next to min, mean, max, and median, which are always '+\
+               'calculated', default=False, action='store_true')
+
+if len(argv) == 1:
+    p.print_help()
+    exit(0)
+
+args = p.parse_args()
+
+if args.mode:
+    from scipy.stats import mode
+
+positions = open(args.p).read().split('\n')
+pile = open(args.m)
+ppile = pile.readline()
+while True:
+    if not search('^'+args.c, ppile): 
+        ppile = pile.readline()
+    else: break
+
+itr = xrange(len(positions)).__iter__()
+i = itr.next()
+
+with open(args.o, 'w') as out:
+    out.write('chromosome\tposition\treference\tcoverage\tP_mean_phred'+\
+              '\tmin_phred\tmean_phred\tmax_phred\tmedian_phred' +
+              ['', '\tmode_phred'][args.mode] + '\n')
+    while i < len(positions):
+        pos = positions[i]
+        if len(pos) == 0 or pos is None: exit('end of mpileup or positions')
+        if len(ppile) == 0:
+            out.write(args.c + '\t' + pos + '\tNA\t0\t1\t' +\
+                      '\t'.join(['0' for i in range([4,5][args.mode])]) + '\n')
+            i = itr.next()
+            continue
+        ipos = int(pos)
+        cPos = search('\t(\d+)\t', ppile).group(1)
+        if int(cPos) < ipos:
+            ppile = pile.readline()
+        elif int(cPos) == ipos:
+            phreds = [[] for i in range([5,6][args.mode])]
+            ppile = ppile.strip('\n').split('\t')
+            if int(ppile[3]) == 0 or\
+            (float(ppile[4].count('+')) + float(ppile[4].count('-'))) /\
+               int(ppile[3]) > 0.5:
+                phreds = [-1 for i in phreds]
+            else:
+                phred = [ord(i) - 33 for i in ppile[5]]
+                phreds[2] = round(mean(phred), 2)
+                if isnan(phreds[2]):
+                    phreds = [0 for i in phreds]
+                else:
+                    phreds[0] = 10**(-phreds[2]/10)
+                    phreds[1] = min(phred)
+                    phreds[3] = max(phred)
+                    phreds[4] = median(phred)
+                    if args.mode:
+                        phreds[5] = mode(phred).mode[0]
+            out.write('\t'.join(ppile[:4] + [str(i) for i in phreds]) + '\n')
+            ppile = pile.readline()
+            i = itr.next()
+        else:
+            out.write(args.c + '\t' + pos + '\tNA\t0\t1\t' +\
+                      '\t'.join(['0' for i in range([4,5][args.mode])]) + '\n')
+            i = itr.next()
