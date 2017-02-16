@@ -1,0 +1,69 @@
+#!/usr/bin/python
+
+""" Turn FASTA into STRUCTURE-like input file for InStruct
+    Bjorn Pieper. MPIPZ. 2015-03-10 """
+
+import sys, getopt, re, string, os
+
+def nucleotide_convert(nucleotide):
+    if nucleotide == 'A':
+        return 1
+    elif nucleotide == 'G':
+        return 2
+    elif nucleotide == 'C':
+        return 3
+    elif nucleotide == 'T':
+        return 4
+    else:
+        return -9
+
+def main(argv):
+    inputfile = ''
+    outputfile = ''
+    priorpopinfo = ''
+    message = 'usage:\nfastostruc -h (help) -p <optional: prior population info> -i <required: inputfile> -o <optional: outputfile>'
+    try:
+        opts, args = getopt.getopt(argv,"hp:i:o:",["prior=", "ifile=", "ofile="])
+    except getopt.GetoptError:
+        print message
+        sys.exit(2)
+    if not opts:
+        print message
+        sys.exit(2)
+    for opt, arg in opts:
+        if opt == '-h':
+            print 'usage:\nfastostruc -h (help) -p <prior population info> -i <inputfile> -o <outputfile>\ninfo:\nfastostruc takes a FASTA alignment as input and turns it into a STRUCTURE formatted output file. It can be called from the commandline with the following flags:\n  -p (or prior=): file with prior population subdivision information (vector of same length as fasta with pops 1, 2, 3 ... etc)\n  -i (or ifile=): inputfile\n  -o (or ofile=): outputfile name\nOnly the inputfile name is required. An outputfile with the same name but with the .STRUC extension will be generated if no outputfile name is specified.'
+            sys.exit()
+        elif opt in ("-i", "--ifile"):
+            inputfile = arg
+            temp = string.split(inputfile, '/')
+            outputfile = temp[len(temp)-1].replace('.fa', '.STRUC')
+            del temp
+        elif opt in ("-o", "--ofile"):
+            outputfile = arg
+        elif opt in ("-p", "--prior"):
+            priorpopinfo = arg
+        
+    print 'Input file is "', inputfile, '"'
+    print 'Output file is "', outputfile, '"'
+
+    if os.path.isfile(outputfile): os.remove(outputfile)
+
+    with open(inputfile, 'r') as infile:
+        for x in infile:
+            output_ziprow = []
+            if re.search('^>', x):
+                label = re.search('(?<=^>).+', x)
+            if re.search('^[AGCTN]', x):
+                output_ziprow.append(label.group())
+                if priorpopinfo: output_ziprow.append(priorpopinfo)
+                else: output_ziprow.append(str(1))
+                for y in x:
+                    output_ziprow.append(str(nucleotide_convert(y)) + '\t' + str(nucleotide_convert(y)))
+                with open(outputfile, 'a') as outfile:
+                    outfile.write(('\t'.join(output_ziprow)) + '\n')
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
+
+
