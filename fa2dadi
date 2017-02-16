@@ -12,10 +12,11 @@ if '-s' in [x for x in sys.argv]:
 else:
     req1 = True; req2 = False
 p = ArgumentParser(prog='fa2dadi', formatter_class=RawTextHelpFormatter,
-                   description='fa2dadi is a tool to turn FASTA alignments into'+\
+                   description='A tool to turn FASTA alignments into'+\
                    ' dadi input format.\nIt will only include'+\
                    ' bi-allelic SNPs, in the context of the\nselected'\
-                   ' populations plus the outgroup.')
+                  ' populations plus the outgroup.\nCurrently all '+\
+                   'monomorphic sites are excluded')
 p.add_argument('-a',  metavar='alignment', help='FASTA alignment <required'+\
                ' for dadi>', required=req1)
 p.add_argument('-o', metavar='outgroup', help='Name of the outgroup <required'+\
@@ -30,11 +31,13 @@ p.add_argument('-l', metavar='poplist', help='Population list <always '+\
 p.add_argument('-lcol', metavar='seqid', help='Column number in population '+\
                'list that has the\nsequence indentifiers.'+\
                ' Defaults to first column', type=int,
-                required=req1, default=[None, 1][req1])
+                #required=req1, default=[None, 1][req1])
+                default=1)
 p.add_argument('-pcol', metavar='popid', help='Column number in population '+\
                'list that has the\npopulation enumerator <required if -s>.'+\
                ' Defaults\nto second column' , type=int, 
-               required=req2, default=[None, 2][req1])
+               #required=req2, default=[None, 2][req1])
+               default=2)
 p.add_argument('-s',  help='Show available populations (or any set of '+
                'unique\nvalues for that matter) in the column specified\n'+
                'with the -pcol argument', action='store_true') 
@@ -71,6 +74,8 @@ seq_pop_indx = [[label.index(j.strip('>')) for j in
                   x[args.pcol-1] == POP]] for POP in pops]  
 pop_indx = [pops.index(i) for i in args.P]
 
+pop_len = [len(i) for i in seq_pop_indx] 
+
 def allSeqIndex(seq_pop_indx, pop_indx):
     ## I take a nested list of lists with indices of the sequences
     ## for each population, and the indices of the desired population(s)
@@ -85,7 +90,7 @@ def allSeqIndex(seq_pop_indx, pop_indx):
 
 def countInOut(allele, seq, i, seq_pop_indx, pop_indx):
     ## I will count occurence of 'allele' at position i in all seqs
-    ## belonging to the pop specified by pop_indx of seq_pop_indx
+    ## belonging to the pop specified by pop_indx in seq_pop_indx
     return [seq[x][i] for x in seq_pop_indx[pop_indx]].count(allele)
 
 ## output file name
@@ -100,13 +105,16 @@ with open(fOUT, 'wb') as OUT:
     for i in range(len(seq[0])):
         allseq = [seq[j][i] for j in allSeqIndex(seq_pop_indx, pop_indx) + [out]]
         allset = list(set(allseq))
-        if len(allset) != 2: continue
+        if len(allset)!= 2 or 'N' in allset: continue
         outAllele = seq[out][i]
         inAllele = [ j for j in allset if j not in outAllele ][0]
+        incnt = [countInOut(inAllele, seq, i, seq_pop_indx, j) for j in
+                 pop_indx]
+        if sum([incnt[j] == pop_len[j] for j in pop_indx]) ==\
+           len(seq_pop_indx): continue
         OUT.write('\t'.join(['-'+inAllele+'-', '-'+outAllele+'-', inAllele] +\
-                             [str(countInOut(inAllele, seq, i, 
-                                         seq_pop_indx, j)) for j in pop_indx]+
-                            [outAllele] + [str(countInOut(outAllele, seq, i, 
-                                                      seq_pop_indx, j)) for j in
-                                                      pop_indx]+\
+                             [str(countInOut(inAllele, seq, i, seq_pop_indx, j))
+                              for j in pop_indx]+[outAllele] +\
+                             [str(countInOut(outAllele, seq, i, seq_pop_indx,\
+                                             j)) for j in pop_indx]+\
                   ['chr', str(pos[i])]) + '\n')

@@ -1,28 +1,41 @@
 #!/usr/bin/python
 
-''' Bjorn Pieper, MPIPZ Cologne, May 2016.
-    Simple tool to make tped and tfam files from our SNP tables '''
+''' Bjorn Pieper, MPIPZ Cologne, May 2016. Feb 2017.
+    Simple tool to make tped and tfam files for arbitrary regions from our
+    SNP tables '''
 
 from argparse import ArgumentParser, RawTextHelpFormatter
 import sys
 from numpy.random import normal 
 from re import search
 
-p = ArgumentParser(prog='snp2tpedfam', formatter_class=RawTextHelpFormatter,
-                   description='A tool to produce tped and tfam files from'+\
-                   ' a table of haploid SNPs.\nAs it stands family, paternal'+\
-                   ' and maternal IDs are set to 0,\nand sex to unknown.')
+p = ArgumentParser(prog='snp2tpedfam', description='A tool to produce tped '+\
+                   'and tfam files, or .ped and .map files from a table of '+\
+                   'haploid SNPs. As it stands paternal and maternal IDs '+\
+                   'are set to 0, and sex to unknown.')
 p.add_argument('-s', metavar='SNP table', help='Path to table of SNPs. The '+\
                'table should contain columns:\nchromosome, position, and'+\
                ' then the alleles for all genotypes.\nA header is required'+\
-              ' to contain the names of the strains', required=True)
+               ' to contain the names of the strains', required=True)
+p.add_argument('-u', metavar='<Int>', help='5\' position of the region to '+\
+               'process. Default is top of the chromosome', default=1,
+               type=int)
+p.add_argument('-d', metavar='<Int>', help='3\' position of th region to '+\
+               'process. default is bottom of the chromosome', default=-1,
+               type=int)
 p.add_argument('-i', metavar='include', help='Path to a list of strains to'+\
-               ' include.', required=True)
+               ' include. Expects a tab delimited table with in 1st column'+\
+               ' the population(family) enumerator, and in the 2nd column '+\
+               'the strain', required=True)
 p.add_argument('-p', metavar='phenotypes', help='path to list of phenotypes.'+\
                ' Should be ordered to match\nthe order in the list provided '+\
                'to \'-i\'. When omitted\na normally distributed random'+\
-               ' phenotype is generated with\na mean of 2 and a standard'+\
-               ' deviation of 0.5', required=False)
+               ' phenotype is generated with\na mean of 10 and a standard'+\
+               ' deviation of 1', required=False)
+p.add_argument('-m', metavar='<Float>', help='Minimum minor allele '+\
+               'frequency (0-1) in output file', type=float, default=0)
+p.add_argument('-T', help='Provide this flag to produce .ped and .map files'+\
+               ' instead of .tped and .tfam', action='store_true')
 p.add_argument('-o', metavar='outfiles', help='Output file name', required=True)
 p._optionals.title='arguments'
 
@@ -33,31 +46,75 @@ if len(sys.argv) == 1:
 args = p.parse_args()
 
 ## open strains
-strains = open(args.i).read().split('\n')[:-1]
+strains = [i.split('\t') for i in open(args.i).read().split('\n')[:-1]]
 ## open or generate phenotypes
 if args.p:
     pheno = open(args.p).read().split('\n')[:-1]
 else:
-    pheno = normal(2, 0.5, len(strains))
+    pheno = normal(10, 1, len(strains))
 
-## write tfam
-with open(args.o + '.tfam', 'wb') as OUT:
-    for i in range(len(strains)):
-        OUT.write('\t'.join(['1', str(i+1), '0', '0', '3', 
-                             str(round(pheno[i],3))])+'\n')\
+def testSub(sub):
+    if len(list(set(sub))) >= 3 and '0' not in list(set(sub)) or\
+       len(set(sub)) == 1 or (len(list(set(sub))) == 2 and '0' in\
+       list(set(sub))) or min([sub.count(i)/float(len(sub)) for i in\
+                               list(set(sub)) if i != '0']) < args.m or True in\
+       [i not in ['A','G','C','T','0'] for i in sub]:
+        return 1
+    return 0
 
-## write tped
-with open(args.s, 'r') as SNP:
-    snp_header=SNP.readline().strip('\n').split('\t')
-    strain_indx = [snp_header.index(i) for i in strains]
-    with open(args.o + '.tped', 'wb') as OUT:
+if not args.T:
+    ## write tfam
+    with open(args.o + '.tfam', 'wb') as OUT:
+        for i in range(len(strains)):
+            OUT.write('\t'.join(['1', str(i+1), '0', '0', '3', 
+                                 str(round(pheno[i],3))])+'\n')\
+    ## write tped
+    with open(args.s, 'r') as SNP:
+        snp_header=SNP.readline().strip('\n').split('\t')
+        strain_indx = [snp_header.index(i[1]) for i in strains]
+        with open(args.o + '.tped', 'wb') as OUT:
+            for snp in SNP:
+                if not args.u == 1 or not args.d == -1:
+                    cpos = int(search('^\p+\t(\d+)\t', snp).group(1))
+                    if cpos < args.u or cpos > [args.d, 9e15][args.d == -1]:
+                        continue
+                tmp = snp.strip('\n').split('\t')
+                for i, j in enumerate(tmp):
+                    if i < 2: continue
+                    if j == 'N':
+                        tmp[i] = '0'
+                sub = [tmp[i] for i in strain_indx]
+                if testSub(sub): continue
+                OUT.write('\t'.join([search('\d', tmp[0]).group(0),
+                                     'snp_'+str(tmp[1]), '0', str(tmp[1])] +\
+                                    [tmp[i]+' '+tmp[i] for i in strain_indx]) +\
+                          '\n')
+else:
+    pped = [ [strains[i][0], strains[i][1], 0, 0, 0, pheno[i]] 
+            for i in range(len(strains)) ]
+    pmap = [] 
+    with open(args.s, 'r') as SNP:
+        snp_header=SNP.readline().strip('\n').split('\t')
+        strain_indx = [snp_header.index(i[1]) for i in strains]
         for snp in SNP:
+            if not args.u == 1 or not args.d == -1:
+                cpos = int(search('\t(\d+)\t', snp).group(1))
+                if cpos < args.u or cpos > [args.d, 9e15][args.d == -1]:
+                    continue
             tmp = snp.strip('\n').split('\t')
+            for i, j in enumerate(tmp):
+                if i < 2: continue
+                if j == 'N':
+                    tmp[i] = '0'
             sub = [tmp[i] for i in strain_indx]
-            if len(set(sub)) == 1 or\
-               True in [i not in ['A', 'G', 'C', 'T', 'N'] for i in sub]:\
-               continue
-            OUT.write('\t'.join([search('\d', tmp[0]).group(0),
-                                 'snp_'+str(tmp[1]), '0', str(tmp[1])] +\
-                                [tmp[i]+' '+tmp[i] for i in strain_indx]) +\
-                      '\n')
+            if testSub(sub): continue
+            for i, j in enumerate(strain_indx):
+                pped[i].append(' '.join([tmp[j], tmp[j]]))
+            pmap.append( (tmp[0], tmp[0]+'_'+tmp[1], 0, tmp[1]) )
+    with open(args.o + '.ped', 'wb') as out:
+        for i in pped:
+            out.write('\t'.join([str(j) for j in i]) + '\n')
+
+    with open(args.o + '.map', 'wb') as out:
+        for i in pmap:
+            out.write('\t'.join([str(j) for j in i]) + '\n')

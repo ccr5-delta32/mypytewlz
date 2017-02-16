@@ -5,27 +5,23 @@ from argparse import ArgumentParser
 from re import search
 from sys import argv, exit
 
-req=True
-if '-peek' in [i for i in argv]:
-    req=False
 p = ArgumentParser(prog='arp2fa', description='This will produce a simple '+\
                   'fasta aligment from the sequences in an arlequin file.'+\
-                  '\nIf the Arlequin sequence is of the form '+\
-                  '\'00020312012\' ..etc. 0123 will be transformed into:\n'+\
-                  'A, G, C, T, respectively so the A is the ancestral'+\
-                  ' allele.\nIf both -pos and -n are omitted the full '+\
-                  'sequences are extracted.\nIf -n is specified n '+\
-                  'nucleotides are extracted.\nIf -pos is specified'+\
-                  ' a nucleotide for every position in pos is extracted.')
-p.add_argument('-arp', metavar='', help='path to .arp file', required=True)
-p.add_argument('-peek', help='Print the first 100 characters of each line in '+\
-               'the arp file', action='store_true', default='store_false')
-p.add_argument('-pos', metavar='', help='path to list of positions. When omit'+\
-               'ted taking positions from the arp file will be attempted',
-               required=False)
-p.add_argument('-n', metavar='', help='max number of SNPs to extract', 
-               required=False)
-p.add_argument('-out', metavar='', help='Output file name', required=req)
+                  'If the Arlequin sequence is of the form '+\
+                  '\'00020312012\' ..etc. 0, 1, 2, 3 will be transformed '+\
+                  'into: A, G, C, T, respectively.')
+p.add_argument('-a', metavar='<String>', help='path to .arp file',required=True)
+p.add_argument('-g', metavar='<String>', help='String that will be prepended '+\
+               'to the sequence identifiers', default='')
+p.add_argument('-P', metavar='<String>', help='Output population info file, '+\
+               'provide the path to which to write or leave empty to use the '+\
+               'current path')
+p.add_argument('-l', metavar='<String>', help='Output positions to pos file, '+\
+               'provide the path to which to write or leave empty to use the '+\
+               'current path')
+p.add_argument('-p', help='Print the first 80 characters of each line in '+\
+               'the arp file', action='store_true', default=False)
+p.add_argument('-o', metavar='<String>', help='Output file name',required=False)
 
 if len(argv) == 1:
     p.print_help()
@@ -33,43 +29,68 @@ if len(argv) == 1:
 
 args = p.parse_args()
 
-if args.pos and args.n:
-    exit('Either -pos or -n, or neither should be specified. Not both.')
+if args.l and len(args.l) == 0:
+    args.l = './'
+elif args.l and args.l[-1] != '/':
+    args.l = args.l + '/'
+if args.P and len(args.P) == 0:
+    args.P = './'
+elif args.P and args.P[-1] != '/':
+    args.P = args.P + '/'
+if len(args.g) > 0:
+    args.g = args.g + '_'
 
-ARP = open(args.arp).read().split('\n')
-if args.peek:
+indx = None
+
+def getIndx(ARP):
+    itr = xrange(len(ARP)).__iter__()
+    i = itr.next()
+    indpop = []
+    while i < len(ARP)-1:
+        if search('NbSamples', ARP[i]):
+            npop = search('NbSamples=(\d)', ARP[i]).group(1)
+        if search('polymorphic positions on chromosome', ARP[i]):
+            i = itr.next()
+            indpop.append(('pos', i))
+        if search('Sample \d', ARP[i]):
+            cpop = search('Sample (\d)', ARP[i]).group(1)
+            i = itr.next(); i = itr.next(); i = itr.next()
+            poprep = 1
+            while len(ARP[i]) not in [0, 2]:
+                indpop.append((args.g + cpop + '_' + str(poprep), str(i)))
+                poprep += 1
+                i = itr.next()
+            if cpop == npop: break
+        try:
+            i = itr.next()
+        except StopIteration: break
+    return indpop
+
+ARP = open(args.a).read().split('\n')[:-1]
+
+if args.p:
     for i in range(len(ARP)):
-        print str(i+1) + '\t' + ARP[i][:100]
+        print str(i+1) + '\t' + ARP[i][:80]
     exit(0)
 
-if not args.pos:
-    for i,j[:100] in enumerate(ARP):
-        if search('polymorphic positions', j):
-            pos = ARP[i+1].split('#')[1].split(',')
-            npos = len(pos)
-            print str(npos) + ' positions taken from arp file'
-            break
+if not args.o:
+    args.o = args.a[:-4].split('/')[-1]
 
-seq_indx = [ARP.index(i) for i in ARP if search('_', i)]
-
-if args.pos:
-    pos = open(args.pos).read().split('\n')[:-1]
-    npos = len(pos)
-if args.n:
-    npos = n
-
-with open(args.out + '.pop', 'wb') as pop:
-   pop.write('simline' + '\t' + 'pop' + '\n')
+if indx is None:
+    indx = getIndx(ARP)
+    if args.P:
+        with open(args.P + args.o + '.pop', 'wb') as out:
+            out.write('ind\tpop\n')
+            for i in range(1, len(indx)):
+                out.write(indx[i][0] + '\t' + indx[i][0][0] + '\n')
 
 nucl = ['A', 'G', 'C', 'T']
 
-with open(args.out + '.fa', 'wb') as DNA:
-    for i in seq_indx:
-       tmp = ARP[i].split('\t')
-       with open(args.out + '.pop', 'ab') as pop:
-           pop.write(tmp[0] + '\t' + 'pop'+str(tmp[0][0]) + '\n')
-       DNA.write('>' + tmp[0] + '\n')
-       if search('\d', tmp[2]):
-           DNA.write(''.join([nucl[int(j)] for j in tmp[2][:npos]]) + '\n')
-       else:
-           DNA.write(''.join(tmp[2]) + '\n')
+with open(args.o + '.fa', 'wb') as DNA:
+    for i in range(1, len(indx)):
+        DNA.write('>' + indx[i][0] +'\n')
+        DNA.write(''.join([nucl[int(j)] for j in ARP[int(indx[i][1])].
+                           split('\t')[2]]) + '\n')
+if args.l:
+    with open(args.l + args.o + '.pos', 'wb') as out:
+        out.write('\n'.join(ARP[int(indx[0][1])].split('#')[1].split(', ')))
