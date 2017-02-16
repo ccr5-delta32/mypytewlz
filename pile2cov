@@ -1,0 +1,69 @@
+#!/usr/bin/env python2
+
+from re import search
+from argparse import ArgumentParser
+from sys import argv, exit
+
+p = ArgumentParser(prog='pile2covmat', description='Produces a table of read'+\
+                   'depths from samtools pileups.')
+p.add_argument('-b', metavar='<String>', help='Path to bamlist')
+p.add_argument('-p', metavar='<String>', help='Path containing the pileups')
+p.add_argument('-B', metavar='<String>', help='Path to BED file')
+p.add_argument('-s', metavar='<String>', help='Path to one of the SNP tables')
+p.add_argument('-c', metavar='<string>', help='Chromosome label')
+p.add_argument('-o', metavar='<String>', help='Output file name. The '+\
+               'chromosome and \'.cov\' will be appended.')
+
+if len(argv) == 1:
+    p.print_help()
+    exit(0)
+
+args = p.parse_args()
+
+CHR = search('\d', args.c).group(0)
+
+snpheader = open(args.s).readline().\
+            strip('\n').split('\t')
+bamlist = open(args.b).read().split('\n')[:-1]
+strains = [i.split('.')[0] for i in bamlist]
+BED = [i.strip('\n').split('\t') for i in
+       open(args.B).readlines()]
+bed = [(i[0], i[2]) for i in BED]
+del BED
+
+res = [ ['0' for i in bed] for i in snpheader]
+res[0] = [i[0] for i in bed]
+res[1] = [i[1] for i in bed]
+
+def getCov(bedpos, bam, CHR):
+    bedlen = len(bedpos)
+    bedpos = [ int(i) for i in bedpos ]
+    itr = xrange(bedlen).__iter__()
+    i = itr.next()
+    getCov_cov = [ '-1' for j in xrange(bedlen) ]
+    with open(args.p + '/' + bam + '.chr' + str(CHR) + '.pile', 'r') as pile:
+        p = pile.readline()
+        while i < bedlen-1:
+            if len(p) == 0: break
+            if isinstance(p, basestring):
+                p = p.split('\t')[:-1]
+                p_pos = int(p[1])
+            if p_pos == bedpos[i]:
+                getCov_cov[i] = p[3]
+                p = pile.readline()
+                i = itr.next()
+            elif p_pos < bedpos[i]:
+                p = pile.readline()
+            else:
+                i = itr.next()
+    return getCov_cov
+
+for bam in bamlist:
+    respos = snpheader.index(bam.split('.')[0])
+    res[respos] = getCov(res[1], bam, CHR)
+
+with open(args.o + '.Chr' + str(CHR) + '.cov', 'wb') as out:
+    out.write('\t'.join(snpheader) + '\n')
+    for i in range(len(res[0])):
+        out.write('\t'.join([j[i] for j in res]) + '\n')
+    
