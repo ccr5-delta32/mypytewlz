@@ -1,0 +1,110 @@
+#!/usr/bin/env python2
+
+from random import uniform
+from argparse import ArgumentParser
+from re import search, IGNORECASE
+from subprocess import check_output
+from sys import argv, exit
+
+p = ArgumentParser(prog='rndsnp', description='Fasta from a subset of random '+\
+                   'SNPs from SNP tables. It expects either Chrn or chrn to '+\
+                   'occur in the SNP table file names to indicate chromosome'+\
+                   ' where n is an integer.')
+p.add_argument('-p', metavar='<String>', help='Path containing SNP tables',
+               required=True)
+p.add_argument('-c', metavar='<String>', help='Common part of SNP table file'+\
+               ' names.', required=True)
+p.add_argument('-e', metavar='<String>', help='Exclude files with this strin'+\
+               'g in the file name', required=False, type=str, default=None)
+p.add_argument('-n', metavar='<Int>', help='Desired number of SNPs (final num'+\
+               'ber will approximate the desired number).', required=True,
+               type=int)
+p.add_argument('-o', metavar='<String>', help='Output file name', required=True)
+p.add_argument('-x', metavar='<String>', help='Path to a file containing stra'+\
+               'ins to exclude, 1 strain name per line', required=False)
+p.add_argument('-O', metavar='<String>', help='Name of the outgroup in the '+\
+               'fasta, if any.', default=False)
+
+if len(argv) == 1:
+    p.print_help()
+    exit(0)
+
+args = p.parse_args()
+if not args.p[-1] == '/':
+    args.p = args.p + '/'
+
+if not args.o[-3:] in ['.fa', '.FA'] or not args.o[-4:]\
+   in ['.fas', '.FAS']:
+    print 'Adding \'.fa\' to output file'
+    args.o = args.o + '.fa'
+
+ls = [i for i in check_output(['ls', args.p]).split('\n') if 
+      search(args.c, i) and not search(args.e, i)]
+
+strains = open(args.p + ls[0]).readline().strip('\n').split('\t')[2:]
+
+if args.x:
+    excl = [i.strip('\n') for i in open(args.x).read().split('\n')]
+    strindx = [strains.index(i) for i in strains if i not in excl]
+else:
+    strindx = [strains.index(i) for i in strains]
+
+if args.O:
+    outindx = strains.index(args.O)
+
+rndcut = (float(args.n) * 12.7) / 190000000
+
+chrpos = [[],[]]
+selection = [[] for i in strindx]
+nucl = ['A', 'G', 'C', 'T']
+
+skipcnt = 0
+cnt = 1
+
+for i in range(1, 9):
+    print 'Chr'+str(i)
+    with open(args.p+[j for j in ls if search('chr'+str(i), j, IGNORECASE)][0],\
+    'r') as SNP:
+        while SNP:
+            TMP = SNP.readline()
+            if TMP == '': break
+            if uniform(0,1) <= rndcut: 
+                while True:
+                    if TMP == '': break
+                    TMPsplt = TMP.strip('\n').split('\t')
+                    tmp = [TMPsplt[j+2] for j in strindx]
+                    tmpset = list(set(tmp))
+                    if len(tmpset) > 2 or len(tmpset) == 1 or\
+                       True in [ j not in nucl for j in tmpset ]:
+                        TMP = SNP.readline()
+                        skipcnt += 1
+                        continue
+                    if args.O:
+                        nout = [TMPsplt[j+2] for j in strindx if j != outindx]
+                        if len(set(nout)) == 1:
+                            TMP = SNP.readline()
+                            skipcnt += 1
+                            continue
+                    chrpos[0].append('chr'+str(i))
+                    chrpos[1].append(TMPsplt[1])
+                    for j in range(len(selection)):
+                        selection[j].append(tmp[j])
+                    cnt += 1
+                    if cnt % 1000 == 0:
+                        print 'chr' + str(i) + ' ' + str(cnt) +\
+                              ' snps chosen so far'
+                        print 'last position chosen: ' + TMPsplt[1]
+                    break
+    print str(skipcnt) + ' skipped on chr' + str(i)
+    skipcnt = 0
+
+with open(args.o, 'wb') as OUT:
+    for i in range(len(selection)):
+        OUT.write('>' + strains[strindx[i]]+ '\n')
+        OUT.write(''.join(selection[i]) + '\n')
+with open('.'.join(args.o.split('.')[:-1]) + '.pos', 'wb') as OUT:
+    for i in range(len(chrpos[0])):
+        OUT.write('\t'.join([chrpos[0][i], chrpos[1][i]]) + '\n')
+
+
+
