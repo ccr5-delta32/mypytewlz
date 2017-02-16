@@ -1,0 +1,60 @@
+#!/usr/bin/python2
+
+''' Bjorn Pieper. MPIPZ Cologne, January 24, 2017. version 1'''
+
+from argparse import ArgumentParser
+from subprocess import check_output, call
+from sys import argv
+from re import search
+
+p = ArgumentParser(prog='mow2eig', description='Parse MOWJOE output folder '+\
+                   'and produce eigenshape analysis input file')
+p.add_argument('-p', metavar='<String>', help='Path to folder with all MOW'+\
+               'JOE output', required=True)
+p.add_argument('-o', metavar='<String>', help='Output file name', required=True)
+
+if len(argv) == 1:
+    p.print_help()
+    exit()
+
+args = p.parse_args()
+
+if not args.p[-1] == '/':
+    args.p = args.p + '/'
+if not args.o[-4:] == '.tps':
+    args.o = args.o + '.tps'
+
+ls = check_output(['ls', args.p]).split('\n')[:-1]
+
+with open(args.o, 'wb') as out:
+
+    for I in range(len(ls)):
+
+        txt = [i.split('\t') for i in
+               open(args.p + ls[I] + '/'+ ls[I] + '.txt').read().\
+                    split('\n')[:-1]]
+        header = txt[0]
+
+        out.write('LM=2' + '\n')
+        out.write(txt[1][txt[0].index('splitPoint2Y')] + ' ' +\
+                  txt[1][txt[0].index('splitPoint2X')] + '\n')
+        out.write(txt[1][txt[0].index('splitPoint1Y')] + ' ' +\
+                  txt[1][txt[0].index('splitPoint1X')] + '\n')
+        out.write('OUTLINES=1' + '\n')
+
+        coord = [i.split('\t')[1:] for i in
+                 open(args.p + ls[I] + '/cordTable.txt').\
+                 read().split('\n')[:-1] if search('^1', i)]
+        ncoord = len(coord)
+        out.write('POINTS=' + str(ncoord) + '\n')
+
+        for i in coord:
+            out.write(' '.join(i) + '\n')
+
+        out.write('IMAGE=' + ls[I] + '.jpg' + '\n')
+        out.write('ID=' + str(I+1) + '\n')
+
+
+
+
+
