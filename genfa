@@ -1,0 +1,77 @@
+#!/usr/bin/env python2
+# vim: set ft=python
+
+''' Bjorn Pieper. MPIPZ COlogne, January 23, 2017.
+    genfa is a tool to extract bits of sequence from the big fasta of the
+    reference sequence with the assembled chromosomen and assorted unassembled
+    scaffolds. The common location of this fasta with the reference genome is
+    hardcoded as default but any other file can be used also'''
+
+from argparse import ArgumentParser
+from sys import exit, argv
+from re import search
+
+p = ArgumentParser(description='genfa is a tool to produce fasta sequence'+\
+                   'for arbitrary regions from the C. hirsuta Ox reference')
+p.add_argument('-r', metavar='<String>', help='Path to reference sequence '+\
+               'fasta (defaults to chi_v1.fa in /biodata/...)',\
+               default='/biodata/dep_tsiantis/common/chigenome/chi_v1.fa')
+p.add_argument('-c', metavar='<String>', help='Chromosome or scaffold identi'+\
+               'fier (eg. Chr1, or NSCAFA.1031I)', required=True)
+p.add_argument('-n', metavar='<Int>', help='5\' position of region to extract',
+              required=True, type=int)
+p.add_argument('-s', metavar='<Int>', help='3\' position of region to extract',
+              required=True, type=int)
+p.add_argument('-o', metavar='<String>', help='Output file name')
+p.add_argument('-R', help='Add this flag to return the reverse complement',
+               action='store_true', default=False)
+
+if len(argv) == 1:
+    p.print_help()
+    exit(0)
+
+args = p.parse_args()
+
+if args.R:
+    args.n = args.n - 1
+else:
+    args.s = args.s + 1
+
+seqname = '_'.join([args.c, str(args.n), str(args.s)])
+if not args.o:
+    args.o = '_'.join([args.c, args.n, args.s])+'.fa' 
+elif args.o and args.o[-3:] is not '.fa' or args.o[-4:] is not '.fas':
+    args.o = args.o + '.fa'
+    seqname = [args.o[:-3], args.o[:-4]][args.o[-4] == '.'] + '_' + seqname
+
+def readRef (path, CHR, args_5, args_3, revComp=False):
+    revDict = {'A':'T', 'G':'C', 'C':'G', 'T':'A', 'N':'N'}
+    seq = []
+    handle = open(path, 'r')
+    while True:
+        line = handle.readline().strip('\n')
+        if search('>'+CHR, line):
+            line = handle.readline().strip('\n')
+            seq.append(line)
+            break
+    while not search('>', line):
+        line = handle.readline().strip('\n')
+        seq.append(line)
+
+    seq = ''.join(seq)[args_5:args_3]
+
+    if revComp:
+        seq = ''.join([ revDict[i] for i in reversed(seq) ])
+
+    return seq
+
+seq = readRef(args.r, args.c, args.n, args.s, args.R)
+
+with open(args.o, 'wb') as out:
+    out.write('>' + seqname + '\n')
+    out.write(seq + '\n')
+
+
+
+
+
