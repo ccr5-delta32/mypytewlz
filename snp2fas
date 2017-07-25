@@ -25,7 +25,9 @@ p.add_argument('-cov', metavar='<String>', help='Path to coverage'+\
 p.add_argument('-t', metavar='<Int>', help='5\' position. Omit to '+\
                'start at 1st SNP.', required=False)
 p.add_argument('-b', metavar='<Int>', help='3\' position. Omit to '+\
-               'include until last SNP.', required=False)
+               'include until last SNP. Or provide a number like this'+\
+               '\'+1000\' to create a 3\' position 1000bp downstream of '+\
+               'the 5\' position', required=False)
 p.add_argument('-o', metavar='<String>', help='Output file name, if '+\
                'omitted the file name will be the SNP table name extended'+\
                ' with \'.fa\'. Take care that this may not be unique in your'+\
@@ -193,6 +195,8 @@ def maskAmbiguityCoverage(snp, inc_indx, cov=None, covrg=None):
             
 header = open(args.snp, 'r').readline().strip('\n').split('\t')
 
+if args.b and args.b[0] == '+':
+    args.b = str(int(args.t) + int(args.b))
 if args.t or args.b: 
     snps = splitAndOpen(args.snp, 1, CHR, 2, [args.t, None][args.t is None],
                         [args.b, None][args.b is None])
@@ -284,17 +288,19 @@ if not args.o:
     OUT = args.snp.split('/')[-1]  
 else:
     OUT = args.o
+    if not OUT[-3:] == '.fa' or OUT[-4:] == '.fas':
+        OUT = OUT + '.fa'
 
 if len(fasta[0]) == 0:
     exit('No sites passed filtering!')
 
-print 'Writing ' + str(len(fasta[0])) + ' sites to ' + OUT + '.fa'
+print 'Writing ' + str(len(fasta[0])) + ' sites to ' + OUT
 
 with open(OUT + '.pos', 'wb') as output:
     for pos in positions:
         output.write(str(pos) + '\n')
 
-with open(OUT + '.fa', 'wb') as output:
+with open(OUT, 'wb') as output:
     for i in i_iter:
         output.write('>' + header[inc_indx[i][0]] + '\n')
         output.write(''.join(fasta[i]) + '\n')
