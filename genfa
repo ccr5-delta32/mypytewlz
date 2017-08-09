@@ -41,10 +41,10 @@ if len(argv) == 1:
 
 args = p.parse_args()
 
-if args.R:
-    args.n = args.n - 1
-else:
-    args.s = args.s + 1
+#if args.R:
+#    args.n = args.n - 1
+#else:
+#    args.s = args.s + 1
 
 seqname = '_' + '_'.join([args.c, str(args.n), str(args.s)])
 if not args.o:
@@ -67,7 +67,7 @@ def readRef (path, CHR, args_5, args_3, revComp=False):
         line = handle.readline().strip('\n')
         seq.append(line)
 
-    seq = ''.join(seq)[args_5:args_3]
+    seq = ''.join(seq)[args_5-1:args_3]
 
     if revComp:
         seq = ''.join([ revDict[i] for i in reversed(seq) ])
@@ -95,10 +95,23 @@ def makeStrain(refSeq, args_c, args_n, args_s, args_R, args_v, args_a):
               '.\nMake sure the SNP table contains data for this chromo'+\
               'some if this is unexpected.')
         return refSeq
-    posall = [(int(i[1]) - args_n, i[header.index(args_a)]) for i in sub if\
-              i[header.index(args_a)] != i[header.index('Ox')]]
-    if args_R:
-        posall = [(abs(i[0] - (args_s-args_n)), revDict[i[1]]) for i in posall]
+    if args.R:
+        posall = [ (abs(int(i[1]) - args_s), revDict[i[header.index(args_a)]],
+                    int(i[1]), revDict[i[header.index('Ox')]]) for i in 
+                   reversed(sub) ]
+    else:
+        posall = [ (int(i[1]) - args_n, i[header.index(args_a)],
+                    int(i[1]), i[header.index('Ox')]) for i in sub ]
+
+#    posall = [(int(i[1]) - args_n, i[header.index(args_a)], int(i[1]),
+#              i[header.index('Ox')]) for i in sub if\
+#              i[header.index(args_a)] != i[header.index('Ox')]]
+#    if args_R:
+#        posall = [(abs(i[0]-(args_s-args_n)-1), revDict[i[1]],
+#                   i[2]-(args_s-args_n)-1, revDict(i[2])) for i in posall]
+    print posall
+    print [i[1] for i in posall]
+    print [i[0] for i in posall]
     altseq = []
     for I, J in enumerate(refSeq):
         if I in [i[0] for i in posall]:
@@ -115,8 +128,8 @@ if args.v:
     altseq = makeStrain(refseq, args.c, args.n, args.s, args.R, args.v, args.a)
 
 with open(args.o, 'wb') as out:
-    out.write('>' + 'Ox' + seqname + '\n')
+    out.write('>' + 'Ox_' + seqname + '\n')
     out.write(refseq + '\n')
     if args.v:
-        out.write('>' + args.a + seqname + '\n')
+        out.write('>' + args.a + '_' + seqname + '\n')
         out.write(altseq)
