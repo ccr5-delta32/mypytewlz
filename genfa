@@ -41,11 +41,6 @@ if len(argv) == 1:
 
 args = p.parse_args()
 
-#if args.R:
-#    args.n = args.n - 1
-#else:
-#    args.s = args.s + 1
-
 seqname = '_' + '_'.join([args.c, str(args.n), str(args.s)])
 if not args.o:
     args.o = '_'.join([args.c, args.n, args.s])+'.fa' 
@@ -103,15 +98,6 @@ def makeStrain(refSeq, args_c, args_n, args_s, args_R, args_v, args_a):
         posall = [ (int(i[1]) - args_n, i[header.index(args_a)],
                     int(i[1]), i[header.index('Ox')]) for i in sub ]
 
-#    posall = [(int(i[1]) - args_n, i[header.index(args_a)], int(i[1]),
-#              i[header.index('Ox')]) for i in sub if\
-#              i[header.index(args_a)] != i[header.index('Ox')]]
-#    if args_R:
-#        posall = [(abs(i[0]-(args_s-args_n)-1), revDict[i[1]],
-#                   i[2]-(args_s-args_n)-1, revDict(i[2])) for i in posall]
-    print posall
-    print [i[1] for i in posall]
-    print [i[0] for i in posall]
     altseq = []
     for I, J in enumerate(refSeq):
         if I in [i[0] for i in posall]:
