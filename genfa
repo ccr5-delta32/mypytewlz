@@ -42,9 +42,10 @@ if len(argv) == 1:
 args = p.parse_args()
 
 if args.R:
-    refseqname = '_' + '_'.join([args.c, str(args.s), str(args.n)])
+    seqname = '_' + '_'.join([args.c, str(args.s), str(args.n)])
 else:
-    refseqname = '_' + '_'.join([args.c, str(args.n), str(args.s)])
+    seqname = '_' + '_'.join([args.c, str(args.n), str(args.s)])
+
 if not args.o:
     args.o = '_'.join([args.c, args.n, args.s])+'.fa' 
 elif args.o and args.o[-3:] is not '.fa' or args.o[-4:] is not '.fas':
