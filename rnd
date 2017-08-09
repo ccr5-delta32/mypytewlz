@@ -4,13 +4,15 @@
 
 from argparse import ArgumentParser
 from sys import argv, exit
-from random import sample, uniform 
+from random import sample, randrange 
 from re import search
 
 p = ArgumentParser(prog='rnd', description='Generates a sequence of unique'+\
                    ' random numbers drawn from a uniform distribution')
 p.add_argument('-r', help='Limits of the range separated by whitespace',
                nargs=2, required=True)
+p.add_argument('-d', metavar='<Int>', help='Minumum distance between the '+\
+              'random numbers', type=int, default=0)
 p.add_argument('-n', metavar='<Int>', help='Number of numbers to return',
                default=1, type=int)
 
@@ -20,24 +22,32 @@ if len(argv) == 1:
 
 args = p.parse_args()
 
-def rndFloats(start, stop, n):
+def rndFloats(start, stop, n, mind):
     added = 0
     ret = []
     while True:
-        draw = uniform(start, stop)
-        if not draw in ret:
-            ret.append(draw)
-            added += 1
-            if added == n:
-                break
-    return ret
+        draw = randrange(start, stop)
+        if len(ret) > 0:
+            chk = [ abs(i - draw) < mind for i in ret ]
+            if sum(chk) != 0: continue
+
+        ret.append(draw)
+        added += 1
+        if added == n:
+            break
+    if len(ret) == n:
+        return ret
 
 if search('\a', args.r[0]) or search('\a', args.r[1]):
     exit('Only number range allowed you provided: ' + ' and '.join(args.r))
-elif search('\.', args.r[0]) or search('\.', args.r[1]):
-    args.r = [float(i) for i in args.r]
-    print ' '.join([str(i) for i in rndFloats(args.r[0], args.r[1], args.n)])
+#elif search('\.', args.r[0]) or search('\.', args.r[1]):
 else:
+    if abs(int(args.r[0])-int(args.r[1])) / args.d <= args.n:
+        exit('Minumum distance impossible for requested range and number!')
     args.r = [int(i) for i in args.r]
-    print ' '.join([str(i) for i in sample(xrange(args.r[0], args.r[1]),
-                                            args.n)])
+    print '\n'.join([str(i) for i in rndFloats(args.r[0], args.r[1], args.n,
+                                              args.d)]) + '\n'
+#else:
+#    args.r = [int(i) for i in args.r]
+#    print ' '.join([str(i) for i in sample(xrange(args.r[0], args.r[1]),
+                                            #args.n)])

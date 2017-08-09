@@ -13,19 +13,19 @@ if '-c' in argv: req=True
 p = ArgumentParser(prog='fa2sfs', description='Count polarized site frequency'+\
                    ' classes from a fasta alignment. Only bi-allelic sites '+\
                    'with no missing data are included.')
-p.add_argument('-f', metavar='fasta', help='Path to fasta '+\
+p.add_argument('-f', metavar='<String>', help='Path to fasta '+\
                'alignment',required=True)
 p.add_argument('-l', metavar='<String>', help='Path to list of positions',
                required=req)
 p.add_argument('-i', metavar='<String>', help='Path to list of strains to '+\
                'form SFS from (simply one column of strain codes). If omitted'+\
                ' the SFS will be counted for all strains in the aligment')
-p.add_argument('-a', metavar='outgroup', help='ID of the outgroup in the'+\
+p.add_argument('-a', metavar='<String>', help='ID of the outgroup in the'+\
                ' aligment', required=True)
 p.add_argument('-p', help='Produce an interactive barplot of the SFS',
                action='store_true')
 p.add_argument('-o', metavar='<String>', help='Save a plot to pdf, provide '+\
-               'the path + filename as an argument')
+               'the path/filename as an argument')
 p.add_argument('-c', help='Output a table with sfs class for each position',
                action='store_true', default=False)
 
@@ -96,7 +96,7 @@ if args.o or args.p:
     pyplot.xlabel('N derived alleles')
     pyplot.ylabel('Count')
     if args.o:
-        from matplotlib.backends.backend_o import PdfPages
+        from matplotlib.backends.backend_pdf import PdfPages
         o = PdfPages(args.o)
         o.savefig()
         o.close()

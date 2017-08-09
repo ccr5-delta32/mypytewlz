@@ -4,10 +4,6 @@
     Calculate summary statistics from site frequency spectra for a single
     population output by FastSimcoal simulations. '''
 
-from sys import path
-path.append('/biodata/dep_tsiantis/common/software/dadi/dadi-1.6.3/')
-import dadi
-from os import path
 from itertools import combinations
 from subprocess import call
 from argparse import ArgumentParser
@@ -43,6 +39,11 @@ if len(argv) == 1:
     exit(0)
 
 args = p.parse_args()
+
+from sys import path
+path.append('/biodata/dep_tsiantis/common/software/dadi/dadi-1.6.3/')
+import dadi
+from os import path
 
 # this directory will hold the multi-SFS made from joint SFS
 if path.exists(['sfs', 'sfs_' + args.o][len(args.o) > 0]):

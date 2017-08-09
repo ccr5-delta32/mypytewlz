@@ -92,5 +92,5 @@ with open(args.o + '.fa', 'wb') as DNA:
         DNA.write(''.join([nucl[int(j)] for j in ARP[int(indx[i][1])].
                            split('\t')[2]]) + '\n')
 if args.l:
-    with open(args.l + args.o + '.pos', 'wb') as out:
+    with open(args.l + args.o.split('/')[-1] + '.pos', 'wb') as out:
         out.write('\n'.join(ARP[int(indx[0][1])].split('#')[1].split(', ')))

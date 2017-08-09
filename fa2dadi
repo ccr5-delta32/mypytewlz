@@ -5,6 +5,7 @@
 from re import search
 import sys
 from argparse import ArgumentParser, RawTextHelpFormatter
+from operator import itemgetter
 
 ## set up command line arg parsing
 if '-s' in [x for x in sys.argv]:
@@ -17,35 +18,46 @@ p = ArgumentParser(prog='fa2dadi', formatter_class=RawTextHelpFormatter,
                    ' bi-allelic SNPs, in the context of the\nselected'\
                   ' populations plus the outgroup.\nCurrently all '+\
                    'monomorphic sites are excluded')
-p.add_argument('-a',  metavar='alignment', help='FASTA alignment <required'+\
+p.add_argument('-a',  metavar='<String>', help='FASTA alignment <required'+\
                ' for dadi>', required=req1)
-p.add_argument('-o', metavar='outgroup', help='Name of the outgroup <required'+\
+p.add_argument('-o', metavar='<String>', help='Name of the outgroup <required'+\
                ' for dadi>', required=req1)
-p.add_argument('-p', metavar='positions', help='List with true physical '+\
-               'positions of the nucleotides\nin case it is a SNP alignment')
-p.add_argument('-l', metavar='poplist', help='Population list <always '+\
-               'required>\na list of at least 2 columns with:\n'+\
+p.add_argument('-p', metavar='<String>', help='Path to a list with true physi'+\
+               'cal positions of the nucleotides\nin case it is a SNP '+\
+               'alignment')
+p.add_argument('-l', metavar='<String>', help='Path to a population list '+\
+               '<always required>\na list of at least 2 columns with:\n'+\
                '   i) the sequence identifiers exactly as they appear\n'+\
                '      in the FASTA, with or without the leading \'>\'\n'+\
                '  ii) some sort of population enumerator\n', required=True)
-p.add_argument('-lcol', metavar='seqid', help='Column number in population '+\
+p.add_argument('-H', help='Provide to indicate that the population list (-l)'+\
+               ' has a header\n(omit if it does not)', action='store_true',
+               default=False)
+p.add_argument('-lcol', metavar='<Int>', help='Column number in population '+\
                'list that has the\nsequence indentifiers.'+\
                ' Defaults to first column', type=int,
                 #required=req1, default=[None, 1][req1])
                 default=1)
-p.add_argument('-pcol', metavar='popid', help='Column number in population '+\
+p.add_argument('-pcol', metavar='<Int>', help='Column number in population '+\
                'list that has the\npopulation enumerator <required if -s>.'+\
                ' Defaults\nto second column' , type=int, 
                #required=req2, default=[None, 2][req1])
                default=2)
+p.add_argument('-P', metavar='<Strings>', help='Population(s) to include, '+\
+               'seperated by whitespace\n<required for dadi>. Use pipes to '+\
+               'combine populations together\nieg. like this to combine pop3'+\
+               ' and 4: \'pop1 pop2 pop3+pop4\'', nargs='*',
+               required=req1)
 p.add_argument('-s',  help='Show available populations (or any set of '+
                'unique\nvalues for that matter) in the column specified\n'+
                'with the -pcol argument', action='store_true') 
-p.add_argument('-out', help='Output filename prefix. Defaults to the names\n'+\
-               'of the included populations')
-p.add_argument('-P', metavar='pop', help='Population(s) to include, '+\
-               'seperated by whitespace\n<required for dadi>', nargs='*',
-               required=req1)
+p.add_argument('-c', metavar='<String>', help='Produce quality summary for'+\
+               ' the selected population(s). Provide the path to the SNP '+\
+               'summary table. The program will terminate after doing this')
+p.add_argument('-x', help='Strains to exclude separated with whitespace',
+               nargs='+', default=[None])
+p.add_argument('-out', metavar='<String>', help='Output filename prefix. '+\
+               'Defaults to the names\nof the included populations')
 p._optionals.title='arguments'
 
 if len(sys.argv) == 1:
@@ -54,13 +66,32 @@ if len(sys.argv) == 1:
 
 args = p.parse_args()
 
+if not args.out[-5:] == '.dadi':
+    args.out = args.out + '.dadi'
+
+print 'Preparing dadi format data for populations ' + ', '.join(args.P)
+
 ## open data and prepare for further processing
 popinfo = [x.split('\t') for x in\
-           open(args.l).read().split('\n')][:-1]
-pops = list(set([x[args.pcol-1] for x in popinfo[1:]]))
+           open(args.l).read().split('\n')][args.H:-1]
+
+# re-write pop enumerator in case pops are combined
+if sum([i.count('+') for i in args.P]) > 0:
+    print 'Combining populations:'
+    for label in args.P:
+        if label.count('+') > 0:
+            labset = label.split('+')
+            print labset
+            for j, k in enumerate([ i[args.pcol-1] for i in popinfo ]):
+                if k in labset:
+                    popinfo[j][args.pcol-1] = label
+
+pops = list(set([x[args.pcol-1] for x in popinfo]))
+
 if args.s: 
     print '\n'.join(['unique values in column ' + str(args.pcol) + ' of file ' +
                      args.l] +  pops); sys.exit(0)
+
 seqs = open(args.a).read().split('\n')
 label = [x.strip('>') for x in seqs if search('>', x)]
 seq = [x for x in seqs if not search('>', x)]
@@ -69,19 +100,45 @@ out = label.index(args.o)
 if args.p: pos = open(args.p).read().split('\n')
 else: pos = range(1, len(seq[0])+1)
 
+for i, line in enumerate(popinfo):
+    if line[0] not in label:
+        print 'FYI, ' + line[0] + ' does not occur in the fasta so it will be'+\
+        ' excluded!'
+        del popinfo[i]
+
 seq_pop_indx = [[label.index(j.strip('>')) for j in 
                  [x[args.lcol-1] for x in popinfo if
-                  x[args.pcol-1] == POP]] for POP in pops]  
+                  x[args.pcol-1] == POP and x[0] not in args.x]]
+                for POP in pops]  
 pop_indx = [pops.index(i) for i in args.P]
 
 pop_len = [len(i) for i in seq_pop_indx] 
+
+print 'Number of lines per population:'
+for i in pop_indx:
+    print  pops[i] + ': ' + str(pop_len[i])
+
+if args.c:
+    print 'Summarising quality information for the selected populations' 
+    summ_head = open(args.c).readline().strip('\n').split('\t')
+    summ = [i.split('\t') for i in open(args.c).read().split('\n')[1:-1]]
+    with open(args.out[:-4] + 'Qchk', 'wb') as out:
+        out.write('population\t' + '\t'.join(summ_head) + '\n')
+        for pop in pop_indx:
+            lines = [i[0] for i in popinfo if i[10] == pops[pop]]
+            cpop = [i for i in summ if i[0] in lines]
+            nN = [int(i[1]) + int(i[2]) + int(i[3]) for i in cpop]
+            cpop = [i for (i, j) in sorted(zip(cpop, nN), key=lambda k: k[1])]
+            for i in cpop:
+                out.write(pops[pop] + '\t' + '\t'.join(i) + '\n')
+    exit('Quality check written to ' + args.out[:-4] + 'Qchk')
 
 def allSeqIndex(seq_pop_indx, pop_indx):
     ## I take a nested list of lists with indices of the sequences
     ## for each population, and the indices of the desired population(s)
     ## to make dadi of. I then return a 1-dimensional list with those 
     ## sequence indices
-    if len(pop_indx) == 1: return seq_pop_indx[pop_indx[0]]
+    if len(pop_indx) == 1: return seq_pop_indx[0]
     else:
         comb = seq_pop_indx[pop_indx[0]]
         for i in range(1, len(pop_indx)):
@@ -94,23 +151,33 @@ def countInOut(allele, seq, i, seq_pop_indx, pop_indx):
     return [seq[x][i] for x in seq_pop_indx[pop_indx]].count(allele)
 
 ## output file name
-if args.out: fOUT = args.out + '.dadi'
+if args.out: fOUT = args.out
 else: fOUT = '_'.join(args.P) + '.dadi'
 
 ## make dadi
+excl = [0, 0, 0] #monomorph, more than 2 alleles, N in set of alleles
 with open(fOUT, 'wb') as OUT:
     OUT.write('\t'.join(['Ingroup', 'Outgroup', 'Allele1'] + 
                         [i for i in args.P] + ['Allele2'] +
                         [i for i in args.P] + ['Gene', 'Position']) + '\n') 
+    asi = allSeqIndex(seq_pop_indx, pop_indx) + [out]
     for i in range(len(seq[0])):
-        allseq = [seq[j][i] for j in allSeqIndex(seq_pop_indx, pop_indx) + [out]]
+        allseq = [seq[j][i] for j in asi]
         allset = list(set(allseq))
-        if len(allset)!= 2 or 'N' in allset: continue
+        if len(allset) < 2:
+            excl[0] +=1
+            continue
+        if 'N' in allset:
+            excl[2] += 1
+            continue
+        if len(allset) != 2:
+            excl[1] +=1
+            continue
         outAllele = seq[out][i]
         inAllele = [ j for j in allset if j not in outAllele ][0]
         incnt = [countInOut(inAllele, seq, i, seq_pop_indx, j) for j in
                  pop_indx]
-        if sum([incnt[j] == pop_len[j] for j in pop_indx]) ==\
+        if sum([incnt[j] == pop_len[pop_indx[j]] for j in range(len(incnt))])==\
            len(seq_pop_indx): continue
         OUT.write('\t'.join(['-'+inAllele+'-', '-'+outAllele+'-', inAllele] +\
                              [str(countInOut(inAllele, seq, i, seq_pop_indx, j))
@@ -118,3 +185,7 @@ with open(fOUT, 'wb') as OUT:
                              [str(countInOut(outAllele, seq, i, seq_pop_indx,\
                                              j)) for j in pop_indx]+\
                   ['chr', str(pos[i])]) + '\n')
+print str(sum(excl)) + ' out of ' + str(len(seq[0])) + ' SNPs excluded:'
+print str(excl[0]) + ' were monomorphic in the ingroup.'
+print str(excl[1]) + ' had more than 2 alleles.'
+print str(excl[2]) + ' because of N\'s.'
