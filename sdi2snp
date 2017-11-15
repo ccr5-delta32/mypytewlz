@@ -1,7 +1,7 @@
 #!/usr/bin/env python2
 # vim: ft=python
 
-''' Bjorn Pieper. June 2016 '''
+''' Bjorn Pieper. June 2016. Nov 2017 - completed indel management '''
 
 from argparse import ArgumentParser
 from sys import argv, exit
@@ -22,17 +22,16 @@ p.add_argument('-l', metavar='<String>', help='list of files to process and'+\
                ' The file extensions (.sdi or .sdi.gz) are not required to '+\
                ' be included in the file names column.\nWhen -l is omitted'+\
                ' the file names themselves minus extensions will be used as'+\
-               ' strain names, and all sdi files in the path will be processed', 
+               ' strain names, and all sdi files in the path will be processed',
                required = False)
 p.add_argument('-ld', metavar='<String>', help='Delimiter in \'-l\'. Default'+\
                ' delimiter is TAB. Use quotes to indicate a whitespace like: '+\
                '\' \'.', required=False, default='\t') 
 p.add_argument('-fcol', metavar='<Int>', help='Number of the column in \'-l\''+\
-               ' containing the sdi file names (default=1).', required=False, 
+               ' containing the sdi file names (default=1).',
                default=1, type=int)
 p.add_argument('-scol', metavar='<Int>', help='Number of the column in \'-l\''+\
-               ' containing the strain names (default=2)', required=False, 
-               default=2, type=int)
+               ' containing the strain names (default=2)', default=2, type=int)
 p.add_argument('-ref', metavar='<String>', help='Name of the reference strain'+\
                ' used for the alignment in the sdi files', required=True)
 p.add_argument('-chr', metavar='<String>', help='Provide the value of the '+\
@@ -40,8 +39,12 @@ p.add_argument('-chr', metavar='<String>', help='Provide the value of the '+\
                required=True)
 p.add_argument('-f', help='Indel filtering. By default indel alleles for '+\
                'sites that are SNPs for other strains are converted to N. By '+\
-               'providing this flag these sites will be excluded entirely.',
-               required=False, action='store_true')
+               'providing this flag they will be excluded from the SNP table'+\
+               ' entirely (see also the option \'-i\' below).', required=False,
+               action='store_true')
+p.add_argument('-i', help='Produce a separate indel table with all sites for'+\
+               'which at least one strain as an indel', default=False,
+               action='store_true')
 p.add_argument('-out', metavar='<string>', help='Output file name', 
                required=True)
 p._optionals.title='options'
@@ -61,7 +64,6 @@ if args.l:
     rel = [ i.split(args.ld) for i in open(args.l).read().split('\n')[:-1] ]
 else:
     rel = [ [i, i] for i in [ j.split('.')[0] for j in ls] ]
-    args.fcol = 1; args.scol = 2 
 
 files = [ ( i, [j[args.scol-1] for j in rel if
             j[args.fcol-1] == i.split('.')[0]][0] )
@@ -81,16 +83,20 @@ def getData(handler, args_f, h_iter, args_chr, length,
         dat = getData_start(handler, args_chr, h_iter)    
     else:
         dat[0] = [ dat[0][i] if not dat[1][i] else 
-                   handler[i].readline().split('\t')
+                   handler[i].readline().strip('\n').split('\t')
                    for i in h_iter ]
     dat[0] = [dat[0][i] if len(dat[0][i]) > 4 else
               ('END', '999999999', '-1', 'X', 'X') for i in h_iter]
     chrpos = [(i[0], int(i[1])) for i in dat[0]]
+
     minpos = min([i[1] for i in chrpos])
     dat[1] = [True if chrpos[i][1] == minpos and chrpos[i][0] == args_chr
               else False for i in h_iter]
     if sum(dat[1]) == 0: return None
 
+    if args.i:
+        return dat
+   
     lenchk = [len(dat[0][i][4])-1 + len(dat[0][i][3])-1 
               for i in h_iter if dat[1][i]]
     if args_f:
@@ -107,7 +113,7 @@ def getData_start(handler, args_chr, h_iter,
                   [True for i in h_iter]]):
     while True:
         cdat[0] = [ cdat[0][i] if not cdat[1][i] else
-                    handler[i].readline().split('\t')
+                    handler[i].readline().strip('\n').split('\t')
                     for i in h_iter ]
         cdat[1] = [cdat[0][i][0] != args_chr for i in h_iter]
         if sum([len(i) for i in cdat[0]]) == 0:
@@ -130,21 +136,56 @@ def maskIndel(aux):
             aux[1][i] = True 
     return aux
 
-## Make the table
-with open(args.out, 'wb') as out:
-    out.write('\t'.join(['chromosome', 'position', args.ref] + 
-                        [i[1] for i in files]) + '\n')
+def catIndels(data, h_iter):
+    adata = [data[0][i][3] + '|' + data[0][i][4] for i in h_iter if data[1][i]]
+    ret = []
+    lchk = 0
+    for i, j in enumerate(set(adata)):
+        J = j.split('|')
+        Jlen = [len(k) if not k == '-' else 0 for k in J]
+        diff = Jlen[0] - Jlen[1]
+        ret.append( (str(diff), j, tuple(J)) )
+        lchk += len(j) == 3 and '-' not in j
+    return (-1, ret)[lchk == 0]
 
-    data = None
-    while True:
-        data = getData(handler,args.f, h_iter, args.chr, length, data)
-        if data is None: break
+## Make the table(s)
+snp = open(args.out + '.snp', 'wb')
+snp.write('\t'.join(['chromosome', 'position', args.ref] + 
+                    [i[1] for i in files]) + '\n')
+if args.i:
+    indel = open(args.out + '.indel', 'wb')
+    indel.write('\t'.join(['chromosome', 'position','n_alleles', 
+                           'lengths(Ox|alt)', 'alleles(Ox|alt)'] +
+                          [i[1] for i in files]) + '\n')
 
-        ref = findRef(data, h_iter)
-        if ref == -1: continue
-        if not args.f:
-            data = maskIndel(data)
-        pos = data[0][[i for i in h_iter if data[1][i]][0]][1] 
-        res = [args.chr, pos, ref] + [ data[0][i][4] if data[1][i] else ref
-                                       for i in h_iter ]
-        out.write('\t'.join(res) + '\n') 
+data = None
+
+while True:
+    data = getData(handler,args.f, h_iter, args.chr, length, data)
+    if data is None: break
+    if args.i and sum([i[0][2] != '0' for i in data[0]]) > 0:
+        indels = catIndels(data, h_iter)
+        if not indels == -1: 
+            nalleles = len(indels)
+            lengths = [ str(i+1) + ':' + indels[i][0] for i in
+                        range(len(indels)) ]
+            alleles = [ str(i+1) + ':' + indels[i][1] for i in
+                        range(len(indels)) ]
+            geno = [ str(range(1,nalleles+1)[[i[1] for i in indels].\
+                                             index(data[0][j][3] + '|' +
+                                             data[0][j][4])]) if
+                    data[1][j] else '0' for j in h_iter]
+            pos = data[0][[i for i in h_iter if data[1][i]][0]][1] 
+            indel.write(args.chr + '\t' + pos + '\t' + str(nalleles) + '\t' +
+                        ','.join(lengths) + '\t' + '0:no_indel,' +
+                       ','.join(alleles) + '\t' + '\t'.join(geno) + '\n')
+
+    ref = findRef(data, h_iter)
+    if ref == -1: continue
+
+    if not args.f:
+        data = maskIndel(data)
+    pos = data[0][[i for i in h_iter if data[1][i]][0]][1] 
+    res = [args.chr, pos, ref] + [ data[0][i][4] if data[1][i] else ref
+                                   for i in h_iter ]
+    snp.write('\t'.join(res) + '\n') 
