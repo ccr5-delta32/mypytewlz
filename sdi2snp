@@ -47,6 +47,8 @@ p.add_argument('-i', help='Produce a separate indel table with all sites for'+\
                action='store_true')
 p.add_argument('-out', metavar='<string>', help='Output file name', 
                required=True)
+p.add_argument('-g', help='Compress the output with gzip', action='store_true',
+               default='store_false')
 p._optionals.title='options'
 
 if len(argv) == 1:
@@ -88,7 +90,6 @@ def getData(handler, args_f, h_iter, args_chr, length,
     dat[0] = [dat[0][i] if len(dat[0][i]) > 4 else
               ('END', '999999999', '-1', 'X', 'X') for i in h_iter]
     chrpos = [(i[0], int(i[1])) for i in dat[0]]
-
     minpos = min([i[1] for i in chrpos])
     dat[1] = [True if chrpos[i][1] == minpos and chrpos[i][0] == args_chr
               else False for i in h_iter]
@@ -111,15 +112,22 @@ def getData(handler, args_f, h_iter, args_chr, length,
 def getData_start(handler, args_chr, h_iter,
                   cdat = [[None for i in h_iter],
                   [True for i in h_iter]]):
-    while True:
-        cdat[0] = [ cdat[0][i] if not cdat[1][i] else
-                    handler[i].readline().strip('\n').split('\t')
-                    for i in h_iter ]
-        cdat[1] = [cdat[0][i][0] != args_chr for i in h_iter]
-        if sum([len(i) for i in cdat[0]]) == 0:
-            exit(args_chr + ' not found in the sdi tables!')
-        if sum(cdat[1]) == 0:
-            return cdat
+    alen = len(args_chr)
+    print 'Seeking ' + args_chr + ' in the sdi files...'
+    for i in range(len(handler)):
+        while True:
+            tmp = handler[i].readline()
+            if tmp == '': break
+            if tmp[:alen] == args_chr:
+                cdat[0][i] = tmp.strip('\n').split('\t')
+                cdat[1][i] = False
+                break
+    if sum(cdat[1]) != 0:
+        exit(args_chr+' not found for ' +
+             ' '.join([handler[i].name.split('/')[-1] for i in
+                       range(len(handler)) if cdat[1][i] ]))
+    print 'Done'
+    return cdat
 
 def findRef(aux, h_iter):
     x = [aux[0][i] for i in h_iter if aux[1][i]]
@@ -149,11 +157,17 @@ def catIndels(data, h_iter):
     return (-1, ret)[lchk == 0]
 
 ## Make the table(s)
-snp = open(args.out + '.snp', 'wb')
+if args.g:
+    snp = gzip.open(args.out + '.snp.' + args.chr.lower() + '.gz', 'wb')
+else:
+    snp = open(args.out + '.snp.' + args.chr.lower(), 'wb')
 snp.write('\t'.join(['chromosome', 'position', args.ref] + 
                     [i[1] for i in files]) + '\n')
 if args.i:
-    indel = open(args.out + '.indel', 'wb')
+    if args.g:
+        indel = gzip.open(args.out + '.indel.' + args.chr.lower() + '.gz', 'wb')
+    else:
+        indel = open(args.out + '.indel.' + args.chr.lower(), 'wb')
     indel.write('\t'.join(['chromosome', 'position','n_alleles', 
                            'lengths(Ox|alt)', 'alleles(Ox|alt)'] +
                           [i[1] for i in files]) + '\n')
