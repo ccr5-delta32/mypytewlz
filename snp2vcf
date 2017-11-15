@@ -1,0 +1,151 @@
+#!/usr/bin/env python2
+# vim: set ft=python
+
+from argparse import ArgumentParser
+from sys import argv, exit
+from re import search, IGNORECASE
+import gzip
+
+p = ArgumentParser(prog='snp2vcf', description='Converts a SNP matrix '+\
+                   'to VCF. The header of the snp table should contain the'+\
+                   ' strain names unless -s is specified.')
+p.add_argument('-i', metavar='<String>', help='Path to SNP matrix',required=True)
+p.add_argument('-g', metavar='<Int>', help='Indicate the first column with'+\
+               ' genotypes (0-based!)', type=int, default=2)
+p.add_argument('-s', metavar='<String>', help='Path to list of strains')
+p.add_argument('-x', metavar='<Strings>', help='Strains to exclude separated'+\
+               ' by whitespace', nargs='+')
+p.add_argument('-c', metavar='<String>', help='Chromosome to make VCF of. '+\
+               'Omit to do all chromosomes', required=False, type=str)
+p.add_argument('-r', metavar='<String>', help='Strain name of the reference',
+               required=True, type=str)
+p.add_argument('-a', help='Add the reference also as a genotype',
+               action='store_true')
+p.add_argument('-m', metavar='<String>', help='Provide the character(s) used '+\
+               'for missing values (default = N)', default='N')
+p.add_argument('-o', metavar='<String>', help='Output file name', required=True)
+
+if len(argv) == 1:
+    p.print_help()
+    exit(0)
+
+args = p.parse_args()
+
+if not args.o[-4:] == '.vcf':
+    args.o = args.o + '.vcf'
+
+if not args.i[-3:] == '.gz':
+    f = open(args.i)
+else:
+    f = gzip.open(args.i)
+
+snpheader = f.readline().strip('\n').split('\t')
+
+if not args.s:
+    strains = snpheader[args.g:]
+else:
+    strains = open(args.s).read().split('\n')[:-1]
+
+if args.x:
+    strainindx = [snpheader.index(i) for i in strains if i not in args.x]
+else:
+    strainindx = [snpheader.index(i) for i in strains]
+
+refindx = snpheader.index(args.r)
+print 'Strain ' + snpheader[refindx] + ' is used as reference.'
+if not args.a:
+    strainindx = [i for i in strainindx if not i == refindx]
+else:
+    print 'And it is also included as another genotype.'
+
+if not args.a:
+    norefln = [i+args.g for i in range(len(strains)) if i != refindx]
+    print 'And it is also included as another genotype.'
+else:
+    norefln = [i+args.g for i in range(len(strains))]
+
+header = ['CHROM', 'POS', 'ID', 'REF', 'ALT', 'QUAL' ,'FILTER' ,'INFO',
+          'FORMAT'] + [snpheader[i] for i in strainindx] 
+
+o = open(args.o, 'wb')
+o.write('##fileformat=VCFv4.2\n')
+o.write("##INFO=<ID=IN,Number=1,Type=Integer,Description=\"Original index"+\
+        " of the SNP in the .map file provided by Baoxing Song\">" +
+       '\n')
+o.write("##FILTER=<ID=PASS,Description=\"Passes Dummy QC\">")
+o.write("##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">" + '\n')
+o.write('#' + '\t'.join(header) + '\n')
+
+lcnt = 1
+chkpnt = False
+
+cnt_mono = 0
+cnt_tri = 0
+cnt_refN = 0
+
+while True:
+    line = f.readline().strip('\n')
+    if line == '': break
+    if chkpnt:
+        if not search('^'+args.c, line):
+            o.close()
+            f.close()
+            exit(0)
+    if args.c and not chkpnt:
+        if not search('^'+args.c, line): 
+            lcnt += 1
+            if lcnt % 50000 == 0:
+                print line[:25] + ' .....'
+            continue
+        else:
+            chkpnt = True
+
+    line = line.split('\t')
+    if search(args.m, line[refindx]): 
+        cnt_refN += 1
+        continue
+    gtest = tuple(set( [line[i] for i in strainindx] ))
+    if len(gtest) < 2:
+        if gtest[0] != args.m:
+            cnt_mono += 1
+        continue
+    if len(gtest) == 2 and args.m in gtest:
+        cnt_mono += 1 # think more about: after imputation maybe not monomorphic
+        continue
+    if (len(gtest) == 3 and not args.m in gtest) or len(gtest) > 3: 
+        cnt_tri += 1
+        continue
+    geno = [None for i in range(9)] + [line[i] for i in strainindx]
+
+    ref = line[refindx]
+    alt = [i for i in gtest if i not in (args.m, ref)][0]
+    genodict = {ref:'\t0|0', alt:'\t1|1', args.m:'\t.|.'}
+    
+    o.write(line[0] + '\t')
+    o.write(line[3] + '\t')
+    o.write(line[0] + '_' + line[3] +'\t')
+    o.write(ref + '\t')
+    o.write(alt + '\t')
+    o.write('60\t')
+    o.write('PASS\t')
+    o.write('IN=' + line[1] + '\t')
+    o.write('GT')
+
+    for i in geno[9:]:
+        o.write(genodict[i])
+    o.write('\n')
+
+with open(args.o + '.log', 'wb') as out:
+    out.write(str(cnt_refN) + ' SNPs have been excluded because the reference'+\
+              ' had a missing value.\n')
+    if args.x:
+        out.write(', '.join(args.x) + ' have been excluded and the following'+\
+                  ' takes this into account.\n')
+    out.write(str(cnt_mono) + ' SNPs have been excluded because they were '+\
+              'monomorphic among the included strains.\n')
+    out.write(str(cnt_tri) + ' SNPs have been excluded because they were '+\
+              'not biallelic.\n')
+
+o.close()
+f.close()
+
